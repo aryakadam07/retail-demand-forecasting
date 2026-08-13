@@ -1,0 +1,59 @@
+# Environment and Secrets
+.env
+*.env
+*.pem
+*.json
+!dbt_project.yml
+credentials/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Data files (M5 dataset is large, do not commit)
+data/*.csv
+data/processed/
+*.parquet
+*.db
+*.duckdb
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Models and checkpoints
+models/*.pkl
+models/*.joblib
+models/*.bin
+models/*.onnx
+
+# dbt artifacts
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -21,8 +21,12 @@ retail-demand-forecasting/
 ├── src/
 │   ├── config.py
 │   ├── data_ingestion/
+│   │   ├── config.py
 │   │   ├── bq_client.py
 │   │   ├── m5_loader.py
+│   │   ├── load_calendar.py
+│   │   ├── load_sales.py
+│   │   ├── load_prices.py
 │   │   └── bigquery_ingestion.py
 │   ├── preprocessing/
 │   │   └── clean_and_melt.py
@@ -76,9 +80,24 @@ USE_LOCAL_DUCKDB=False
 
 ---
 
-## Running M5 Raw Data Ingestion to BigQuery
+## Running Raw M5 Data Ingestion to Google BigQuery
 
-### Execute Ingestion Engine
+### Individual Ingestion Scripts
+You can load each dataset independently using its dedicated ingestion module:
+
+```bash
+# 1. Load raw calendar.csv -> BigQuery table raw_calendar
+python -m src.data_ingestion.load_calendar
+
+# 2. Load raw sales_train_validation.csv -> BigQuery table raw_sales_train_validation
+python -m src.data_ingestion.load_sales
+
+# 3. Load raw sell_prices.csv -> BigQuery table raw_sell_prices
+python -m src.data_ingestion.load_prices
+```
+
+### Full Data Ingestion Pipeline
+To execute end-to-end ingestion for all 3 datasets in a single command:
 ```bash
 python -m src.data_ingestion.bigquery_ingestion
 ```
@@ -97,20 +116,20 @@ pytest tests/test_ingestion.py -v
 
 ## Verifying BigQuery Tables
 
-### 1. In Google Cloud Console
+### 1. BigQuery Console Verification
 1. Open [BigQuery Console](https://console.cloud.google.com/bigquery).
 2. Expand your Project ID (`m5-retail-analytics`).
 3. Expand Dataset (`retail_m5_dw`).
 4. Verify the 3 raw tables exist:
    - `raw_calendar`
-   - `raw_sales_train`
+   - `raw_sales_train_validation`
    - `raw_sell_prices`
 
 ### 2. Run Verification Query in BigQuery SQL Workspace
 ```sql
 SELECT 'raw_calendar' AS table_name, COUNT(*) AS row_count FROM `retail_m5_dw.raw_calendar`
 UNION ALL
-SELECT 'raw_sales_train' AS table_name, COUNT(*) AS row_count FROM `retail_m5_dw.raw_sales_train`
+SELECT 'raw_sales_train_validation' AS table_name, COUNT(*) AS row_count FROM `retail_m5_dw.raw_sales_train_validation`
 UNION ALL
 SELECT 'raw_sell_prices' AS table_name, COUNT(*) AS row_count FROM `retail_m5_dw.raw_sell_prices`;
 ```

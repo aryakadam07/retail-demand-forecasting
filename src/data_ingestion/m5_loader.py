@@ -135,7 +135,9 @@ class M5DataLoader:
         print("[Ingestion] Loading 'raw_calendar' table...")
         self.client.load_dataframe(datasets["calendar"], "raw_calendar", if_exists="replace")
 
-        print("[Ingestion] Loading 'raw_sales_train' table...")
+        print("[Ingestion] Loading 'raw_sales_train_validation' table...")
+        self.client.load_dataframe(datasets["sales_train"], "raw_sales_train_validation", if_exists="replace")
+        # Keep alias raw_sales_train for backwards compatibility
         self.client.load_dataframe(datasets["sales_train"], "raw_sales_train", if_exists="replace")
 
         print("[Ingestion] Loading 'raw_sell_prices' table...")

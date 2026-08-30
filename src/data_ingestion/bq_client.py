@@ -123,6 +123,34 @@ class WarehouseClient:
             conn.close()
             return result_df
 
+    def verify_table(self, table_name: str, sample_limit: int = 5) -> dict:
+        """
+        Verifies table existence, counts total rows, lists column names, and fetches sample records.
+        """
+        full_table = f"{self.dataset_id}.{table_name}"
+        try:
+            count_df = self.query(f"SELECT COUNT(*) AS row_count FROM {full_table}")
+            row_count = int(count_df.iloc[0]["row_count"])
+
+            sample_df = self.query(f"SELECT * FROM {full_table} LIMIT {sample_limit}")
+            columns = list(sample_df.columns)
+
+            return {
+                "exists": True,
+                "table_name": table_name,
+                "full_table": full_table,
+                "row_count": row_count,
+                "columns": columns,
+                "sample_head": sample_df.to_dict(orient="records"),
+            }
+        except Exception as exc:
+            return {
+                "exists": False,
+                "table_name": table_name,
+                "full_table": full_table,
+                "error": str(exc),
+            }
+
 
 if __name__ == "__main__":
     client = WarehouseClient()
@@ -131,3 +159,5 @@ if __name__ == "__main__":
     client.load_dataframe(test_df, "test_table")
     df_out = client.query(f"SELECT * FROM {client.dataset_id}.test_table")
     print("Verification Query Output:\n", df_out)
+    print("Verify Table Result:\n", client.verify_table("test_table"))
+

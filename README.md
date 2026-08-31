@@ -136,6 +136,75 @@ SELECT 'raw_sell_prices' AS table_name, COUNT(*) AS row_count FROM `retail_m5_dw
 
 ---
 
+## Week 1 Day 4: Data Quality Checks & Data Standardization
+
+### Architecture
+Day 4 establishes the **Data Quality & Audit Layer** between raw warehouse tables and downstream dbt modeling:
+
+```
+Raw M5 Data  -->  BigQuery Raw Tables  -->  Data Quality Checks  -->  Clean/Validated Tables
+                 (raw_calendar)            (data_quality.py)          (clean_calendar)
+                 (raw_sales_train)                                   (clean_sales_train_validation)
+                 (raw_sell_prices)                                   (clean_sell_prices)
+```
+
+### Data Quality Checks & Standardization Matrix
+
+1. **Calendar Validation (`src/preprocessing/clean_calendar.py`)**:
+   - Standardizes `date` to ISO format `YYYY-MM-DD`.
+   - Validates continuity, year range (2011–2016), month (1–12), and weekday bounds.
+   - Audits event coverage (`event_name_1`, `event_type_1`).
+   - Generates `clean_calendar` table in BigQuery.
+
+2. **Sales Validation (`src/preprocessing/clean_sales.py`)**:
+   - Preserves wide format (`id`, `item_id`, `dept_id`, `cat_id`, `store_id`, `state_id`, `d_1..d_N`).
+   - Ensures non-negative numeric daily sales volumes.
+   - Audits extreme sales outliers (>500 units/day) without auto-deletion.
+   - Generates `clean_sales_train_validation` (and alias `clean_sales`) table in BigQuery.
+
+3. **Pricing Validation (`src/preprocessing/clean_prices.py`)**:
+   - Validates composite key `store_id` + `item_id` + `wm_yr_wk`.
+   - Ensures numeric float type for `sell_price`.
+   - Flags missing or zero prices (preserves raw price distribution without fabricating fake prices).
+   - Generates `clean_sell_prices` table in BigQuery.
+
+### Running Day 4 Pipeline & Tests
+
+```bash
+# 1. Execute Day 4 Data Quality & Standardization Pipeline
+python -m src.preprocessing.run_day4_pipeline
+
+# Force local DuckDB/SQLite offline execution:
+python -m src.preprocessing.run_day4_pipeline --local
+
+# 2. Run Automated Quality & Standardization Test Suite
+pytest tests/test_data_quality.py -v
+```
+
+### Sample Data Quality Report Output
+
+```text
+==================================================
+  DATA QUALITY REPORT: CALENDAR
+==================================================
+  Rows            : 1,969
+  Columns         : 14
+  Duplicate Rows  : 0
+  Overall Status  : PASS
+--------------------------------------------------
+  CHECKS:
+    [PASS]  Missing Dates: No missing date values
+    [PASS]  Duplicate Dates: No duplicate dates found
+    [PASS]  Valid Date Format: All dates follow ISO format YYYY-MM-DD
+    [PASS]  Missing Weekday Values: No missing weekday values
+    [PASS]  Valid Year/Week Ranges: Year and week values within valid bounds
+    [PASS]  Unexpected Event Types: Event types match official M5 domain categories
+    [PASS]  Event Coverage: Identified 162 holiday/special event occurrences
+==================================================
+```
+
+---
+
 ## Common Errors & Troubleshooting
 
 | Error | Cause | Solution |
@@ -144,3 +213,4 @@ SELECT 'raw_sell_prices' AS table_name, COUNT(*) AS row_count FROM `retail_m5_dw
 | `Access Denied: 403` | Service account lacks permissions. | Grant **BigQuery Data Editor** & **BigQuery Job User** roles to the Service Account. |
 | `NotFound: 404 Dataset` | Dataset does not exist. | The ingestion script auto-creates datasets, or run `CREATE SCHEMA retail_m5_dw` in GCP Console. |
 | `ImportError: google-cloud-bigquery` | Package not installed. | Run `pip install google-cloud-bigquery db-dtypes pyarrow`. |
+

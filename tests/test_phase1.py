@@ -74,9 +74,9 @@ def test_full_phase1_pipeline(warehouse_client, sample_m5_data):
     calendar_df, sales_df, prices_df = sample_m5_data
     
     # 1. Ingest raw data into warehouse
-    warehouse_client.load_dataframe(calendar_df, "raw_calendar", if_exists="replace")
-    warehouse_client.load_dataframe(sales_df, "raw_sales_train", if_exists="replace")
-    warehouse_client.load_dataframe(prices_df, "raw_sell_prices", if_exists="replace")
+    warehouse_client.load_dataframe(calendar_df, "clean_calendar", if_exists="replace")
+    warehouse_client.load_dataframe(sales_df, "clean_sales_train_validation", if_exists="replace")
+    warehouse_client.load_dataframe(prices_df, "clean_sell_prices", if_exists="replace")
 
     # 2. Run preprocessing
     preprocessor = DataPreprocessor()

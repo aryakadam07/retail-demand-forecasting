@@ -205,6 +205,117 @@ pytest tests/test_data_quality.py -v
 
 ---
 
+## Week 1 Day 5: Sales Data Transformation & Analytical Table Creation
+
+### Overview
+Day 5 transforms the wide M5 sales dataset (`d_1`...`d_N`) into a standardized long analytical table (`fact_daily_sales`), maps daily column identifiers to actual ISO calendar dates (`YYYY-MM-DD`), and merges weekly unit sell prices.
+
+### Why Wide-to-Long Transformation is Required
+The raw M5 sales table stores daily sales volumes horizontally across 1,913 columns (`d_1` to `d_1913`). While compact for storage, this format:
+- Prevents relational joining with calendar events and price tables on a daily level.
+- Hinders time-series indexing, aggregation (`SUM`, `AVG`), and dbt dimensional modeling.
+- Unpivoting to long format creates a normalized structure (`date`, `item_id`, `store_id`, `sales`, `sell_price`) suitable for feature engineering and downstream ML forecasting.
+
+### Transformation Example
+
+#### Before (Wide Format):
+| item_id | dept_id | cat_id | store_id | state_id | d_1 | d_2 | d_3 |
+|---|---|---|---|---|---|---|---|
+| HOBBIES_1_001 | HOBBIES_1 | HOBBIES | CA_1 | CA | 0 | 2 | 1 |
+
+#### After (Long Format - `fact_daily_sales`):
+| date | item_id | dept_id | cat_id | store_id | state_id | sales | sell_price |
+|---|---|---|---|---|---|---|---|
+| 2011-01-29 | HOBBIES_1_001 | HOBBIES_1 | HOBBIES | CA_1 | CA | 0 | 8.26 |
+| 2011-01-30 | HOBBIES_1_001 | HOBBIES_1 | HOBBIES | CA_1 | CA | 2 | 8.26 |
+| 2011-01-31 | HOBBIES_1_001 | HOBBIES_1 | HOBBIES | CA_1 | CA | 1 | 8.26 |
+
+---
+
+### Implementation Methodology
+
+1. **Wide-to-Long Unpivoting (`src/preprocessing/transform_sales.py`)**:
+   - Uses `pd.melt` (or SQL `UNPIVOT`) to unpivot `d_1`...`d_N` columns to rows while preserving product/store hierarchy (`item_id`, `dept_id`, `cat_id`, `store_id`, `state_id`).
+
+2. **Calendar Date Mapping**:
+   - Joins with `clean_calendar` on `d` column (`d_1` -> `2011-01-29`). Adds ISO `date` and weekly temporal ID `wm_yr_wk`.
+
+3. **Weekly Sell Price Integration**:
+   - Merges `clean_sell_prices` using composite key `(store_id, item_id, wm_yr_wk)`.
+   - Missing prices (prior to item introduction) are reported and preserved as `NULL` without inventing arbitrary fake prices.
+
+4. **Data Standardization & Ingestion**:
+   - `sales` is formatted as non-negative integer.
+   - `sell_price` is formatted as floating-point precision numeric.
+   - Loads transformed data into BigQuery table `fact_daily_sales` (and backward-compatible alias `stg_sales_long`).
+
+---
+
+### Running Day 5 Transformation Pipeline & Tests
+
+```bash
+# 1. Execute Day 5 Sales Transformation Pipeline
+python -m src.preprocessing.run_day5_pipeline
+
+# Force local DuckDB/SQLite offline execution:
+python -m src.preprocessing.run_day5_pipeline --local
+
+# 2. Run Day 5 Transformation Test Suite
+pytest tests/test_transform_sales.py -v
+
+# 3. Run Full Project Test Suite
+pytest tests/ -v
+```
+
+### Sample Transformation Report Output
+
+```text
+==================================================
+  WEEK 1 DAY 5: SALES DATA TRANSFORMATION REPORT  
+==================================================
+  Target Table Name       : fact_daily_sales (alias: stg_sales_long)
+  Warehouse Dataset       : retail_m5_dw
+  Warehouse Backend Engine: SQLITE
+--------------------------------------------------
+  TRANSFORMATION METRICS & SUMMARY:
+    - Total Records Created: 2,000
+    - Minimum Date         : 2011-01-29
+    - Maximum Date         : 2011-05-08
+    - Unique Products      : 20
+    - Unique Stores        : 4
+    - Unique Departments   : 6
+    - Unique Categories    : 3
+--------------------------------------------------
+  DATA INTEGRITY & VALIDATION CHECKS:
+    1. Raw vs Transformed Sales Sum : [PASS] MATCHED
+       - Raw Sales Total            : 10,029
+       - Transformed Sales Total    : 10,029
+    2. Negative Sales Volumes       : [PASS] 0 negative sales
+    3. Missing Calendar Dates       : [PASS] 0 missing dates
+    4. Missing Sell Prices          : 0 records without price
+       * Note: Missing prices occur for weeks prior to product release in store.
+    5. Key Uniqueness (date+item+store): [PASS] 0 duplicates
+==================================================
+```
+
+---
+
+## Verifying Analytical BigQuery Table
+
+### SQL Verification Query (BigQuery / Local Warehouse)
+```sql
+SELECT 
+    MIN(date) AS min_date,
+    MAX(date) AS max_date,
+    COUNT(DISTINCT item_id) AS unique_items,
+    COUNT(DISTINCT store_id) AS unique_stores,
+    SUM(sales) AS total_sales,
+    COUNT(*) AS total_rows
+FROM `retail_m5_dw.fact_daily_sales`;
+```
+
+---
+
 ## Common Errors & Troubleshooting
 
 | Error | Cause | Solution |

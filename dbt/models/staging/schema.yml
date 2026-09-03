@@ -1,0 +1,69 @@
+version: 2
+
+models:
+  - name: stg_calendar
+    description: "Staging view for M5 calendar dimension"
+    columns:
+      - name: sales_date
+        description: "ISO calendar date"
+        tests:
+          - not_null
+          - unique
+      - name: day_id
+        description: "Day identifier column d_1 to d_1969"
+        tests:
+          - not_null
+          - unique
+      - name: wm_yr_wk
+        description: "Walmart weekly temporal ID"
+        tests:
+          - not_null
+
+  - name: stg_sales
+    description: "Staging view for M5 sales series metadata"
+    columns:
+      - name: series_id
+        description: "Unique series key"
+        tests:
+          - not_null
+          - unique
+      - name: item_id
+        description: "Product SKU identifier"
+        tests:
+          - not_null
+      - name: store_id
+        description: "Store location identifier"
+        tests:
+          - not_null
+      - name: cat_id
+        description: "Category classification"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['FOODS', 'HOBBIES', 'HOUSEHOLD']
+      - name: state_id
+        description: "US State code"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['CA', 'TX', 'WI']
+
+  - name: stg_sell_prices
+    description: "Staging view for M5 weekly unit sell prices"
+    columns:
+      - name: store_id
+        description: "Store location identifier"
+        tests:
+          - not_null
+      - name: item_id
+        description: "Product SKU identifier"
+        tests:
+          - not_null
+      - name: wm_yr_wk
+        description: "Walmart weekly temporal ID"
+        tests:
+          - not_null
+      - name: sell_price
+        description: "Unit selling price in USD"
+        tests:
+          - not_null

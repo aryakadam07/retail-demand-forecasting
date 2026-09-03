@@ -1,0 +1,19 @@
+retail_m5_dw:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account
+      project: "{{ env_var('GCP_PROJECT_ID', 'm5-retail-analytics') }}"
+      dataset: "{{ env_var('BIGQUERY_DATASET', 'retail_m5_dw') }}"
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS', 'credentials/gcp-key.json') }}"
+      threads: 4
+      timeout_seconds: 300
+      location: US
+      priority: interactive
+
+    local:
+      type: duckdb
+      path: "data/m5_warehouse.duckdb"
+      schema: "retail_m5_dw"
+      threads: 4

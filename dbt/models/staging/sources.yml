@@ -1,0 +1,51 @@
+version: 2
+
+sources:
+  - name: retail_m5_dw
+    description: "Raw and Cleaned M5 Walmart Retail Data Warehouse Dataset"
+    tables:
+      - name: clean_calendar
+        description: "Standardized calendar dimension metadata with ISO dates and event classifications"
+        columns:
+          - name: date
+            description: "ISO-8601 calendar date YYYY-MM-DD"
+          - name: wm_yr_wk
+            description: "Walmart weekly temporal ID"
+          - name: d
+            description: "Day identifier column d_1 to d_1969"
+
+      - name: clean_sales_train_validation
+        description: "Cleaned wide daily sales volume table across item-store series"
+        columns:
+          - name: id
+            description: "Unique series key (item_id + store_id + validation)"
+          - name: item_id
+            description: "Product SKU identifier"
+          - name: store_id
+            description: "Store location identifier"
+
+      - name: clean_sell_prices
+        description: "Cleaned weekly unit sell prices per item and store"
+        columns:
+          - name: store_id
+            description: "Store location identifier"
+          - name: item_id
+            description: "Product SKU identifier"
+          - name: wm_yr_wk
+            description: "Walmart weekly temporal ID"
+          - name: sell_price
+            description: "Unit selling price in USD"
+
+      - name: fact_daily_sales
+        description: "Transformed long daily sales analytical fact table"
+        columns:
+          - name: date
+            description: "ISO-8601 sales date"
+          - name: item_id
+            description: "Product SKU identifier"
+          - name: store_id
+            description: "Store location identifier"
+          - name: sales
+            description: "Daily unit sales volume"
+          - name: sell_price
+            description: "Unit selling price in USD"

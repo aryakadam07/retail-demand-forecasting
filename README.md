@@ -300,6 +300,110 @@ pytest tests/ -v
 
 ---
 
+## Week 1 Data Architecture & Pipeline Flow
+
+```
+M5 Dataset
+    ↓
+BigQuery Raw Tables (`raw_calendar`, `raw_sales_train_validation`, `raw_sell_prices`)
+    ↓
+Data Quality & Standardization (`clean_calendar`, `clean_sales_train_validation`, `clean_sell_prices`)
+    ↓
+Transformation & Analytical Layer (`fact_daily_sales` / `stg_sales_long`)
+    ↓
+Validation & Audit Layer (`validate_transformed.py`, `run_day6_pipeline.py`)
+    ↓
+Ready for dbt Dimensional Modeling
+```
+
+---
+
+## Week 1 Day 6: Transformed Sales Data Validation & Week 1 ETL Completion
+
+### Overview
+Day 6 completes Week 1 ETL by performing comprehensive validation and analytical audits on `fact_daily_sales`, verifying M5 product/store dimension hierarchies, assessing temporal and pricing distributions, and generating the final Week 1 Data Quality & Audit Report.
+
+### Key Validation Checks & Methodology
+
+1. **Analytical Table Integrity (`src/preprocessing/validate_transformed.py`)**:
+   - Audits total row counts, min/max ISO dates, unique entities (`item_id`, `store_id`, `dept_id`, `cat_id`, `state_id`).
+   - Ensures non-negative sales volumes and verifies total sales conservation against raw wide tables.
+   - Enforces unique primary keys (`date + item_id + store_id`).
+   - Flags missing dates, missing prices, or invalid non-positive prices (`sell_price <= 0`).
+
+2. **M5 Hierarchy Relationship Verification**:
+   - Confirms strict 1:1 parent mapping relationships:
+     - `item_id → dept_id`
+     - `dept_id → cat_id`
+     - `item_id → cat_id`
+     - `store_id → state_id`
+   - Flags and reports any inconsistent or broken hierarchy links.
+
+3. **Sales & Temporal Analysis**:
+   - Measures daily unit sales totals, store sales rankings, and category/department breakdowns.
+   - Analyzes day-of-week sales variations (Monday to Sunday) and weekend vs weekday contrasts.
+
+4. **Pricing Statistics**:
+   - Calculates overall price metrics (mean, min, max, median) and price range variation per item/store.
+   - Ensures missing prices (prior to product release) are preserved without fabricating fake prices.
+
+---
+
+### Running Day 6 Pipeline & Tests
+
+```bash
+# 1. Execute Day 6 Validation & Report Pipeline
+python -m src.preprocessing.run_day6_pipeline
+
+# Force local DuckDB/SQLite offline execution:
+python -m src.preprocessing.run_day6_pipeline --local
+
+# 2. Run Day 6 Validation Test Suite
+pytest tests/test_validate_day6.py -v
+
+# 3. Run Complete Week 1 Test Suite (33 tests)
+pytest tests/ -v
+```
+
+### Sample Week 1 Final Validation Report Output
+
+```text
+================================================================================
+          WEEK 1 FINAL ETL & DATA QUALITY VALIDATION REPORT                     
+================================================================================
+  Target Table Name       : fact_daily_sales (alias: stg_sales_long)
+  Warehouse Dataset       : retail_m5_dw
+  Warehouse Backend Engine: SQLITE
+  OVERALL WEEK 1 STATUS   : [PASS]
+--------------------------------------------------------------------------------
+1. DATASET SIZE & COVERAGE CHECKS:
+   - Row Count            : 70 [PASS]
+   - Date Range           : 2011-01-29 to 2011-02-11 [PASS]
+   - Unique Products      : 5
+   - Unique Stores        : 4
+   - Unique Departments   : 5
+   - Unique Categories    : 3
+   - Unique States        : 3
+--------------------------------------------------------------------------------
+2. DATA INTEGRITY & AUDIT MATRIX:
+   - Raw vs Transformed Sales Sum : [PASS] MATCHED
+   - Negative Sales Volumes       : 0 [PASS]
+   - Missing Dates Count          : 0 [PASS]
+   - Missing Sell Prices Count    : 0 (0.0%) [PASS]
+   - Duplicate Keys (date+item+store): 0 [PASS]
+   - Invalid Prices (sell_price<=0): 0 [PASS]
+--------------------------------------------------------------------------------
+3. M5 HIERARCHY RELATIONSHIP VALIDATION:
+   - item_id -> dept_id           : [PASS]
+   - dept_id -> cat_id            : [PASS]
+   - item_id -> cat_id            : [PASS]
+   - store_id -> state_id         : [PASS]
+   - Overall Hierarchy Status     : [PASS]
+================================================================================
+```
+
+---
+
 ## Verifying Analytical BigQuery Table
 
 ### SQL Verification Query (BigQuery / Local Warehouse)
@@ -324,4 +428,5 @@ FROM `retail_m5_dw.fact_daily_sales`;
 | `Access Denied: 403` | Service account lacks permissions. | Grant **BigQuery Data Editor** & **BigQuery Job User** roles to the Service Account. |
 | `NotFound: 404 Dataset` | Dataset does not exist. | The ingestion script auto-creates datasets, or run `CREATE SCHEMA retail_m5_dw` in GCP Console. |
 | `ImportError: google-cloud-bigquery` | Package not installed. | Run `pip install google-cloud-bigquery db-dtypes pyarrow`. |
+
 

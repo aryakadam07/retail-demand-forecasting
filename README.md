@@ -1,432 +1,204 @@
 # Retail Demand Forecasting & Inventory Optimization System
 
-An end-to-end production-oriented analytics and forecasting engine built on Walmart's **M5 Forecasting Dataset**.
+An end-to-end production-oriented analytics, demand forecasting, and inventory optimization platform built on Walmart's **M5 Forecasting Dataset**.
 
 ---
 
-## Project Architecture
+## 1. Project Title & Business Problem
+
+### Business Problem
+Retail supply chains suffer from inaccurate sales forecasts, leading to multi-million dollar stockout losses and excessive inventory holding costs. Traditional forecasting methods struggle with intermittent demand, pricing dynamics, store-level variations, and seasonal event impacts across diverse product categories.
+
+### Project Objective
+This system provides an end-to-end data architecture, automated ETL pipeline, dbt dimensional modeling layer, machine learning demand forecasting engines (Prophet & LightGBM), safety stock/reorder point inventory optimization, and an interactive executive Streamlit dashboard.
+
+---
+
+## 2. Dataset Overview
+
+The system processes Walmart's official **M5 Forecasting Dataset** across 10 stores in 3 US states (California, Texas, Wisconsin):
+- **`calendar.csv`**: Contains 1,969 days of calendar dates (`2011-01-29` to `2016-06-19`), weekly IDs (`wm_yr_wk`), event names/types (`Cultural`, `National`, `Religious`, `Sporting`), and SNAP food stamp binary entitlement indicators for CA, TX, and WI.
+- **`sales_train_validation.csv`**: Contains daily sales volume across 30,490 items and 10 stores (wide format columns `d_1`...`d_1913`).
+- **`sell_prices.csv`**: Contains weekly unit sell prices per item and store ($).
+
+---
+
+## 3. Technology Stack
+
+- **Data Warehouse**: Google BigQuery (Production Data Warehouse) / DuckDB & SQLite (Local Offline Data Engine)
+- **Data Pipeline & Preprocessing**: Python 3.13, Pandas, NumPy, PyArrow
+- **Data Modeling & Transformation**: dbt (Data Build Tool - Week 2)
+- **Forecasting Engines**: LightGBM, Facebook Prophet (Week 3)
+- **Inventory Optimization**: Python SciPy / Custom Heuristics (Week 4)
+- **Dashboard & Analytics**: Streamlit (Week 5)
+- **Testing & Security**: Pytest, Python-dotenv, GCP IAM Role Delegation
+
+---
+
+## 4. End-to-End Week 1 Data Architecture
 
 ```
-retail-demand-forecasting/
-├── data/
-│   ├── README.md
-│   └── processed/
-├── dbt/
-│   ├── models/
-│   │   ├── staging/
-│   │   ├── intermediate/
-│   │   └── marts/
-│   ├── tests/
-│   └── dbt_project.yml
-├── src/
-│   ├── config.py
-│   ├── data_ingestion/
-│   │   ├── config.py
-│   │   ├── bq_client.py
-│   │   ├── m5_loader.py
-│   │   ├── load_calendar.py
-│   │   ├── load_sales.py
-│   │   ├── load_prices.py
-│   │   └── bigquery_ingestion.py
-│   ├── preprocessing/
-│   │   └── clean_and_melt.py
-│   ├── features/
-│   ├── forecasting/
-│   └── inventory/
-├── models/
-├── dashboard/
-├── notebooks/
-│   └── 01_exploratory_data_analysis.py
-├── tests/
-│   ├── test_phase1.py
-│   └── test_ingestion.py
-├── requirements.txt
-├── .env.example
-├── .gitignore
-└── README.md
+                                 [ M5 Raw Dataset ]
+                                         │
+                                         ▼
+                      [ Google BigQuery / Local Warehouse ]
+                  ┌──────────────────────┬───────────────────┐
+                  │                      │                   │
+           (raw_calendar)   (raw_sales_train_validation)  (raw_sell_prices)
+                  │                      │                   │
+                  └──────────────────────┼───────────────────┘
+                                         ▼
+                     [ Data Quality & Standardization Layer ]
+                     - clean_calendar (ISO YYYY-MM-DD)
+                     - clean_sales_train_validation (non-negative)
+                     - clean_sell_prices (float validation)
+                                         │
+                                         ▼
+                     [ Wide-to-Long Transformation Engine ]
+                     - pd.melt(d_1 ... d_N -> long format)
+                     - Date & Week Key Mapping
+                     - Weekly Price Joining (wm_yr_wk)
+                                         │
+                                         ▼
+                     [ Analytical Table: fact_daily_sales ]
+                     - Standardized Granularity: date + item + store
+                                         │
+                                         ▼
+                    [ Data Integrity & Hierarchy Validation ]
+                    - M5 Dimension Hierarchy (1:1 checks)
+                    - Temporal & Pricing Statistics
+                                         │
+                                         ▼
+                    [ READY FOR DBT DIMENSIONAL MODELING ]
 ```
 
 ---
 
-## Google BigQuery Setup & Configuration Guide
+## 5. Google BigQuery Setup & Configuration
 
-### 1. GCP Console Project Setup
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create a new GCP Project (e.g. `m5-retail-analytics`).
-3. Ensure BigQuery API is enabled under **APIs & Services > Enabled APIs**.
+### 1. GCP Console Setup
+1. Open the [Google Cloud Console](https://console.cloud.google.com/).
+2. Create GCP Project: `m5-retail-analytics`.
+3. Enable **BigQuery API** under **APIs & Services**.
 
 ### 2. Service Account & Credentials
 1. Navigate to **IAM & Admin > Service Accounts**.
-2. Click **Create Service Account** (e.g., `m5-ingestion-sa`).
-3. Grant the following IAM Roles:
-   - **BigQuery Data Editor**
-   - **BigQuery Job User**
-4. Click on the created Service Account > **Keys** > **Add Key** > **Create new key (JSON)**.
-5. Save the JSON key file safely on your machine (e.g., `credentials/gcp-key.json`).
+2. Create Service Account (e.g. `m5-ingestion-sa`).
+3. Assign Roles:
+   - `BigQuery Data Editor`
+   - `BigQuery Job User`
+4. Create & download JSON Service Account Key to `credentials/gcp-key.json`.
 
-### 3. Local `.env` Configuration
+### 3. Local Environment Variables (`.env`)
 Copy `.env.example` to `.env`:
-```bash
-copy .env.example .env
-```
-Edit `.env` and fill in your GCP parameters:
 ```env
-GCP_PROJECT_ID=your-gcp-project-id
+GCP_PROJECT_ID=m5-retail-analytics
 BIGQUERY_DATASET=retail_m5_dw
 GOOGLE_APPLICATION_CREDENTIALS=credentials/gcp-key.json
-USE_LOCAL_DUCKDB=False
+USE_LOCAL_DUCKDB=True
 ```
-*(Note: If `GOOGLE_APPLICATION_CREDENTIALS` is omitted or `USE_LOCAL_DUCKDB=True` is set, the ingestion script automatically falls back to local storage).*
+*(Note: Setting `USE_LOCAL_DUCKDB=True` or omitting GCP credentials triggers an automatic local DuckDB/SQLite fallback mode, allowing full offline execution without Cloud API keys).*
 
 ---
 
-## Running Raw M5 Data Ingestion to Google BigQuery
+## 6. Warehouse Table Overview & Data Dictionary
 
-### Individual Ingestion Scripts
-You can load each dataset independently using its dedicated ingestion module:
+Full documentation is available in [docs/data_dictionary.md](file:///c:/Users/HP/OneDrive/Desktop/retail-demand-forecasting/docs/data_dictionary.md).
+
+### Summary Table List
+- **Raw Layer**: `retail_m5_dw.raw_calendar`, `retail_m5_dw.raw_sales_train_validation`, `retail_m5_dw.raw_sell_prices`
+- **Clean Layer**: `retail_m5_dw.clean_calendar`, `retail_m5_dw.clean_sales_train_validation`, `retail_m5_dw.clean_sell_prices`
+- **Analytical Layer**: `retail_m5_dw.fact_daily_sales` (alias: `stg_sales_long`)
+
+### Schema: `fact_daily_sales`
+| Field | Data Type | Key | Description |
+| :--- | :--- | :--- | :--- |
+| `date` | `DATE` / `STRING` | PK | ISO-8601 sales date (`YYYY-MM-DD`) |
+| `item_id` | `STRING` | PK | Product SKU identifier |
+| `dept_id` | `STRING` | FK | Department identifier (`HOBBIES_1`, `FOODS_1`, etc.) |
+| `cat_id` | `STRING` | FK | Category identifier (`FOODS`, `HOBBIES`, `HOUSEHOLD`) |
+| `store_id` | `STRING` | PK | Store location identifier (`CA_1`, `TX_1`, etc.) |
+| `state_id` | `STRING` | FK | US state abbreviation (`CA`, `TX`, `WI`) |
+| `sales` | `INTEGER` | — | Daily unit sales volume ($\ge 0$) |
+| `sell_price` | `FLOAT` | — | Unit sell price in USD ($) |
+
+---
+
+## 7. How to Run the Week 1 Pipeline
+
+### Run Full Master ETL Pipeline
+Executes Raw Ingestion $\rightarrow$ Data Quality $\rightarrow$ Transformation $\rightarrow$ Validation:
 
 ```bash
-# 1. Load raw calendar.csv -> BigQuery table raw_calendar
-python -m src.data_ingestion.load_calendar
+# Execute master ETL pipeline on active warehouse backend
+python -m src.run_week1_pipeline
 
-# 2. Load raw sales_train_validation.csv -> BigQuery table raw_sales_train_validation
-python -m src.data_ingestion.load_sales
-
-# 3. Load raw sell_prices.csv -> BigQuery table raw_sell_prices
-python -m src.data_ingestion.load_prices
+# Force local offline DuckDB/SQLite execution:
+python -m src.run_week1_pipeline --local
 ```
 
-### Full Data Ingestion Pipeline
-To execute end-to-end ingestion for all 3 datasets in a single command:
+### Run Individual Stage Modules
 ```bash
+# 1. Raw Ingestion Stage
 python -m src.data_ingestion.bigquery_ingestion
-```
 
-To force local offline fallback execution:
-```bash
-python -m src.data_ingestion.bigquery_ingestion --local
-```
-
-### Run Automated Ingestion Test Suite
-```bash
-pytest tests/test_ingestion.py -v
-```
-
----
-
-## Verifying BigQuery Tables
-
-### 1. BigQuery Console Verification
-1. Open [BigQuery Console](https://console.cloud.google.com/bigquery).
-2. Expand your Project ID (`m5-retail-analytics`).
-3. Expand Dataset (`retail_m5_dw`).
-4. Verify the 3 raw tables exist:
-   - `raw_calendar`
-   - `raw_sales_train_validation`
-   - `raw_sell_prices`
-
-### 2. Run Verification Query in BigQuery SQL Workspace
-```sql
-SELECT 'raw_calendar' AS table_name, COUNT(*) AS row_count FROM `retail_m5_dw.raw_calendar`
-UNION ALL
-SELECT 'raw_sales_train_validation' AS table_name, COUNT(*) AS row_count FROM `retail_m5_dw.raw_sales_train_validation`
-UNION ALL
-SELECT 'raw_sell_prices' AS table_name, COUNT(*) AS row_count FROM `retail_m5_dw.raw_sell_prices`;
-```
-
----
-
-## Week 1 Day 4: Data Quality Checks & Data Standardization
-
-### Architecture
-Day 4 establishes the **Data Quality & Audit Layer** between raw warehouse tables and downstream dbt modeling:
-
-```
-Raw M5 Data  -->  BigQuery Raw Tables  -->  Data Quality Checks  -->  Clean/Validated Tables
-                 (raw_calendar)            (data_quality.py)          (clean_calendar)
-                 (raw_sales_train)                                   (clean_sales_train_validation)
-                 (raw_sell_prices)                                   (clean_sell_prices)
-```
-
-### Data Quality Checks & Standardization Matrix
-
-1. **Calendar Validation (`src/preprocessing/clean_calendar.py`)**:
-   - Standardizes `date` to ISO format `YYYY-MM-DD`.
-   - Validates continuity, year range (2011–2016), month (1–12), and weekday bounds.
-   - Audits event coverage (`event_name_1`, `event_type_1`).
-   - Generates `clean_calendar` table in BigQuery.
-
-2. **Sales Validation (`src/preprocessing/clean_sales.py`)**:
-   - Preserves wide format (`id`, `item_id`, `dept_id`, `cat_id`, `store_id`, `state_id`, `d_1..d_N`).
-   - Ensures non-negative numeric daily sales volumes.
-   - Audits extreme sales outliers (>500 units/day) without auto-deletion.
-   - Generates `clean_sales_train_validation` (and alias `clean_sales`) table in BigQuery.
-
-3. **Pricing Validation (`src/preprocessing/clean_prices.py`)**:
-   - Validates composite key `store_id` + `item_id` + `wm_yr_wk`.
-   - Ensures numeric float type for `sell_price`.
-   - Flags missing or zero prices (preserves raw price distribution without fabricating fake prices).
-   - Generates `clean_sell_prices` table in BigQuery.
-
-### Running Day 4 Pipeline & Tests
-
-```bash
-# 1. Execute Day 4 Data Quality & Standardization Pipeline
+# 2. Data Quality & Standardization Stage
 python -m src.preprocessing.run_day4_pipeline
 
-# Force local DuckDB/SQLite offline execution:
-python -m src.preprocessing.run_day4_pipeline --local
-
-# 2. Run Automated Quality & Standardization Test Suite
-pytest tests/test_data_quality.py -v
-```
-
-### Sample Data Quality Report Output
-
-```text
-==================================================
-  DATA QUALITY REPORT: CALENDAR
-==================================================
-  Rows            : 1,969
-  Columns         : 14
-  Duplicate Rows  : 0
-  Overall Status  : PASS
---------------------------------------------------
-  CHECKS:
-    [PASS]  Missing Dates: No missing date values
-    [PASS]  Duplicate Dates: No duplicate dates found
-    [PASS]  Valid Date Format: All dates follow ISO format YYYY-MM-DD
-    [PASS]  Missing Weekday Values: No missing weekday values
-    [PASS]  Valid Year/Week Ranges: Year and week values within valid bounds
-    [PASS]  Unexpected Event Types: Event types match official M5 domain categories
-    [PASS]  Event Coverage: Identified 162 holiday/special event occurrences
-==================================================
-```
-
----
-
-## Week 1 Day 5: Sales Data Transformation & Analytical Table Creation
-
-### Overview
-Day 5 transforms the wide M5 sales dataset (`d_1`...`d_N`) into a standardized long analytical table (`fact_daily_sales`), maps daily column identifiers to actual ISO calendar dates (`YYYY-MM-DD`), and merges weekly unit sell prices.
-
-### Why Wide-to-Long Transformation is Required
-The raw M5 sales table stores daily sales volumes horizontally across 1,913 columns (`d_1` to `d_1913`). While compact for storage, this format:
-- Prevents relational joining with calendar events and price tables on a daily level.
-- Hinders time-series indexing, aggregation (`SUM`, `AVG`), and dbt dimensional modeling.
-- Unpivoting to long format creates a normalized structure (`date`, `item_id`, `store_id`, `sales`, `sell_price`) suitable for feature engineering and downstream ML forecasting.
-
-### Transformation Example
-
-#### Before (Wide Format):
-| item_id | dept_id | cat_id | store_id | state_id | d_1 | d_2 | d_3 |
-|---|---|---|---|---|---|---|---|
-| HOBBIES_1_001 | HOBBIES_1 | HOBBIES | CA_1 | CA | 0 | 2 | 1 |
-
-#### After (Long Format - `fact_daily_sales`):
-| date | item_id | dept_id | cat_id | store_id | state_id | sales | sell_price |
-|---|---|---|---|---|---|---|---|
-| 2011-01-29 | HOBBIES_1_001 | HOBBIES_1 | HOBBIES | CA_1 | CA | 0 | 8.26 |
-| 2011-01-30 | HOBBIES_1_001 | HOBBIES_1 | HOBBIES | CA_1 | CA | 2 | 8.26 |
-| 2011-01-31 | HOBBIES_1_001 | HOBBIES_1 | HOBBIES | CA_1 | CA | 1 | 8.26 |
-
----
-
-### Implementation Methodology
-
-1. **Wide-to-Long Unpivoting (`src/preprocessing/transform_sales.py`)**:
-   - Uses `pd.melt` (or SQL `UNPIVOT`) to unpivot `d_1`...`d_N` columns to rows while preserving product/store hierarchy (`item_id`, `dept_id`, `cat_id`, `store_id`, `state_id`).
-
-2. **Calendar Date Mapping**:
-   - Joins with `clean_calendar` on `d` column (`d_1` -> `2011-01-29`). Adds ISO `date` and weekly temporal ID `wm_yr_wk`.
-
-3. **Weekly Sell Price Integration**:
-   - Merges `clean_sell_prices` using composite key `(store_id, item_id, wm_yr_wk)`.
-   - Missing prices (prior to item introduction) are reported and preserved as `NULL` without inventing arbitrary fake prices.
-
-4. **Data Standardization & Ingestion**:
-   - `sales` is formatted as non-negative integer.
-   - `sell_price` is formatted as floating-point precision numeric.
-   - Loads transformed data into BigQuery table `fact_daily_sales` (and backward-compatible alias `stg_sales_long`).
-
----
-
-### Running Day 5 Transformation Pipeline & Tests
-
-```bash
-# 1. Execute Day 5 Sales Transformation Pipeline
+# 3. Sales Transformation Stage
 python -m src.preprocessing.run_day5_pipeline
 
-# Force local DuckDB/SQLite offline execution:
-python -m src.preprocessing.run_day5_pipeline --local
-
-# 2. Run Day 5 Transformation Test Suite
-pytest tests/test_transform_sales.py -v
-
-# 3. Run Full Project Test Suite
-pytest tests/ -v
-```
-
-### Sample Transformation Report Output
-
-```text
-==================================================
-  WEEK 1 DAY 5: SALES DATA TRANSFORMATION REPORT  
-==================================================
-  Target Table Name       : fact_daily_sales (alias: stg_sales_long)
-  Warehouse Dataset       : retail_m5_dw
-  Warehouse Backend Engine: SQLITE
---------------------------------------------------
-  TRANSFORMATION METRICS & SUMMARY:
-    - Total Records Created: 2,000
-    - Minimum Date         : 2011-01-29
-    - Maximum Date         : 2011-05-08
-    - Unique Products      : 20
-    - Unique Stores        : 4
-    - Unique Departments   : 6
-    - Unique Categories    : 3
---------------------------------------------------
-  DATA INTEGRITY & VALIDATION CHECKS:
-    1. Raw vs Transformed Sales Sum : [PASS] MATCHED
-       - Raw Sales Total            : 10,029
-       - Transformed Sales Total    : 10,029
-    2. Negative Sales Volumes       : [PASS] 0 negative sales
-    3. Missing Calendar Dates       : [PASS] 0 missing dates
-    4. Missing Sell Prices          : 0 records without price
-       * Note: Missing prices occur for weeks prior to product release in store.
-    5. Key Uniqueness (date+item+store): [PASS] 0 duplicates
-==================================================
-```
-
----
-
-## Week 1 Data Architecture & Pipeline Flow
-
-```
-M5 Dataset
-    ↓
-BigQuery Raw Tables (`raw_calendar`, `raw_sales_train_validation`, `raw_sell_prices`)
-    ↓
-Data Quality & Standardization (`clean_calendar`, `clean_sales_train_validation`, `clean_sell_prices`)
-    ↓
-Transformation & Analytical Layer (`fact_daily_sales` / `stg_sales_long`)
-    ↓
-Validation & Audit Layer (`validate_transformed.py`, `run_day6_pipeline.py`)
-    ↓
-Ready for dbt Dimensional Modeling
-```
-
----
-
-## Week 1 Day 6: Transformed Sales Data Validation & Week 1 ETL Completion
-
-### Overview
-Day 6 completes Week 1 ETL by performing comprehensive validation and analytical audits on `fact_daily_sales`, verifying M5 product/store dimension hierarchies, assessing temporal and pricing distributions, and generating the final Week 1 Data Quality & Audit Report.
-
-### Key Validation Checks & Methodology
-
-1. **Analytical Table Integrity (`src/preprocessing/validate_transformed.py`)**:
-   - Audits total row counts, min/max ISO dates, unique entities (`item_id`, `store_id`, `dept_id`, `cat_id`, `state_id`).
-   - Ensures non-negative sales volumes and verifies total sales conservation against raw wide tables.
-   - Enforces unique primary keys (`date + item_id + store_id`).
-   - Flags missing dates, missing prices, or invalid non-positive prices (`sell_price <= 0`).
-
-2. **M5 Hierarchy Relationship Verification**:
-   - Confirms strict 1:1 parent mapping relationships:
-     - `item_id → dept_id`
-     - `dept_id → cat_id`
-     - `item_id → cat_id`
-     - `store_id → state_id`
-   - Flags and reports any inconsistent or broken hierarchy links.
-
-3. **Sales & Temporal Analysis**:
-   - Measures daily unit sales totals, store sales rankings, and category/department breakdowns.
-   - Analyzes day-of-week sales variations (Monday to Sunday) and weekend vs weekday contrasts.
-
-4. **Pricing Statistics**:
-   - Calculates overall price metrics (mean, min, max, median) and price range variation per item/store.
-   - Ensures missing prices (prior to product release) are preserved without fabricating fake prices.
-
----
-
-### Running Day 6 Pipeline & Tests
-
-```bash
-# 1. Execute Day 6 Validation & Report Pipeline
+# 4. Transformed Sales Validation Stage
 python -m src.preprocessing.run_day6_pipeline
+```
 
-# Force local DuckDB/SQLite offline execution:
-python -m src.preprocessing.run_day6_pipeline --local
-
-# 2. Run Day 6 Validation Test Suite
-pytest tests/test_validate_day6.py -v
-
-# 3. Run Complete Week 1 Test Suite (33 tests)
+### Execute Test Suite
+```bash
+# Run all 36 automated unit & integration tests
 pytest tests/ -v
 ```
 
-### Sample Week 1 Final Validation Report Output
+---
 
-```text
-================================================================================
-          WEEK 1 FINAL ETL & DATA QUALITY VALIDATION REPORT                     
-================================================================================
-  Target Table Name       : fact_daily_sales (alias: stg_sales_long)
-  Warehouse Dataset       : retail_m5_dw
-  Warehouse Backend Engine: SQLITE
-  OVERALL WEEK 1 STATUS   : [PASS]
---------------------------------------------------------------------------------
-1. DATASET SIZE & COVERAGE CHECKS:
-   - Row Count            : 70 [PASS]
-   - Date Range           : 2011-01-29 to 2011-02-11 [PASS]
-   - Unique Products      : 5
-   - Unique Stores        : 4
-   - Unique Departments   : 5
-   - Unique Categories    : 3
-   - Unique States        : 3
---------------------------------------------------------------------------------
-2. DATA INTEGRITY & AUDIT MATRIX:
-   - Raw vs Transformed Sales Sum : [PASS] MATCHED
-   - Negative Sales Volumes       : 0 [PASS]
-   - Missing Dates Count          : 0 [PASS]
-   - Missing Sell Prices Count    : 0 (0.0%) [PASS]
-   - Duplicate Keys (date+item+store): 0 [PASS]
-   - Invalid Prices (sell_price<=0): 0 [PASS]
---------------------------------------------------------------------------------
-3. M5 HIERARCHY RELATIONSHIP VALIDATION:
-   - item_id -> dept_id           : [PASS]
-   - dept_id -> cat_id            : [PASS]
-   - item_id -> cat_id            : [PASS]
-   - store_id -> state_id         : [PASS]
-   - Overall Hierarchy Status     : [PASS]
-================================================================================
-```
+## 8. Security & Secret Protection Notes
+
+To prevent key leaks:
+- The `.env` file, `credentials/` folder, `*.json` service account keys, and SQLite/DuckDB binary databases (`*.db`, `*.duckdb`) are strictly ignored via `.gitignore`.
+- Credentials are fetched exclusively via environment variables (`os.getenv`). No hardcoded API keys or passwords exist anywhere in the source code.
+- Automated security test (`test_security_credentials_not_tracked`) is included in the test suite.
 
 ---
 
-## Verifying Analytical BigQuery Table
+## 9. Week 1 Completion Checklist
 
-### SQL Verification Query (BigQuery / Local Warehouse)
-```sql
-SELECT 
-    MIN(date) AS min_date,
-    MAX(date) AS max_date,
-    COUNT(DISTINCT item_id) AS unique_items,
-    COUNT(DISTINCT store_id) AS unique_stores,
-    SUM(sales) AS total_sales,
-    COUNT(*) AS total_rows
-FROM `retail_m5_dw.fact_daily_sales`;
-```
+| Checklist Item | Status | Verification Note |
+| :--- | :---: | :--- |
+| M5 dataset available | **PASS** | `calendar.csv`, `sales_train_validation.csv`, `sell_prices.csv` mapped |
+| BigQuery / Warehouse configured | **PASS** | Connection and schema creation verified |
+| Raw tables created | **PASS** | `raw_calendar`, `raw_sales_train_validation`, `raw_sell_prices` loaded |
+| Data quality checks implemented | **PASS** | Automated audit matrix (`data_quality.py`) active |
+| Dates standardized | **PASS** | Converted to ISO `YYYY-MM-DD` |
+| Sales volumes standardized | **PASS** | Non-negative integer enforcement ($sales \ge 0$) |
+| Prices standardized | **PASS** | Floating-point precision ($sell\_price > 0$) |
+| Wide-to-long transformation completed | **PASS** | `d_1...d_N` unpivoted to long structure |
+| Product hierarchy preserved | **PASS** | 1:1 `item_id → dept_id → cat_id` verified |
+| Store hierarchy preserved | **PASS** | 1:1 `store_id → state_id` verified |
+| `fact_daily_sales` created | **PASS** | Primary table populated in warehouse |
+| Final validation completed | **PASS** | All integrity & price checks passed (`[PASS]`) |
+| Documentation completed | **PASS** | README.md & data_dictionary.md finalized |
+| Credentials protected | **PASS** | Zero keys committed; `.gitignore` enforced |
+| Project ready for dbt | **PASS** | Warehouse table schemas & grain ready for staging models |
 
 ---
 
-## Common Errors & Troubleshooting
+## 10. Current Status & Week 2 Preview
 
-| Error | Cause | Solution |
-| :--- | :--- | :--- |
-| `DefaultCredentialsError` | `GOOGLE_APPLICATION_CREDENTIALS` path is incorrect or missing. | Ensure path in `.env` points to valid GCP service account JSON key file. |
-| `Access Denied: 403` | Service account lacks permissions. | Grant **BigQuery Data Editor** & **BigQuery Job User** roles to the Service Account. |
-| `NotFound: 404 Dataset` | Dataset does not exist. | The ingestion script auto-creates datasets, or run `CREATE SCHEMA retail_m5_dw` in GCP Console. |
-| `ImportError: google-cloud-bigquery` | Package not installed. | Run `pip install google-cloud-bigquery db-dtypes pyarrow`. |
+### Current Status
+**Week 1 (Data Architecture & ETL)** is 100% COMPLETE. The warehouse dataset `retail_m5_dw` and analytical fact table `fact_daily_sales` are fully loaded, sanitized, unpivoted, and verified.
 
-
+### Ready for Week 2 (dbt Modeling)
+In Week 2, we will start building our **dbt (Data Build Tool)** project:
+- **Staging Models**: `stg_calendar`, `stg_sales`, `stg_prices`
+- **Intermediate Models**: Aggregating weekly/monthly sales metrics and price movements
+- **Mart Models**: `dim_items`, `dim_stores`, `dim_calendar`, `fct_daily_sales`
+- **dbt Data Tests & Documentation**: Custom singular and generic tests

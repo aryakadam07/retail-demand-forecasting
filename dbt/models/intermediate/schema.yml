@@ -1,0 +1,94 @@
+version: 2
+
+models:
+  - name: int_daily_sales
+    description: >
+      Intermediate view joining fact sales with calendar dimension.
+      Grain: One record per item_id + store_id + sales_date combination.
+    columns:
+      - name: sales_date
+        description: "ISO calendar date of sales transaction"
+        tests:
+          - not_null
+      - name: item_id
+        description: "Product SKU identifier"
+        tests:
+          - not_null
+      - name: store_id
+        description: "Store location identifier"
+        tests:
+          - not_null
+      - name: state_id
+        description: "US state code"
+        tests:
+          - not_null
+      - name: cat_id
+        description: "Product category classification"
+        tests:
+          - not_null
+      - name: dept_id
+        description: "Product department classification"
+        tests:
+          - not_null
+      - name: sales
+        description: "Daily unit sales volume"
+        tests:
+          - not_null
+      - name: sell_price
+        description: "Unit selling price in USD"
+
+  - name: int_weekly_sales
+    description: >
+      Intermediate view aggregating daily sales into weekly sales totals and pricing statistics.
+      Grain: One record per item_id + store_id + wm_yr_wk combination.
+    columns:
+      - name: wm_yr_wk
+        description: "Walmart weekly temporal ID"
+        tests:
+          - not_null
+      - name: item_id
+        description: "Product SKU identifier"
+        tests:
+          - not_null
+      - name: store_id
+        description: "Store location identifier"
+        tests:
+          - not_null
+      - name: total_weekly_sales
+        description: "Total aggregated unit sales volume for the week"
+        tests:
+          - not_null
+      - name: avg_sell_price
+        description: "Average unit selling price during the week"
+      - name: selling_days
+        description: "Number of days in week with non-zero sales"
+
+  - name: int_monthly_sales
+    description: >
+      Intermediate view aggregating daily sales into monthly sales totals and pricing statistics.
+      Grain: One record per item_id + store_id + year + month combination.
+    columns:
+      - name: year
+        description: "Calendar year YYYY"
+        tests:
+          - not_null
+      - name: month
+        description: "Calendar month 1 to 12"
+        tests:
+          - not_null
+      - name: item_id
+        description: "Product SKU identifier"
+        tests:
+          - not_null
+      - name: store_id
+        description: "Store location identifier"
+        tests:
+          - not_null
+      - name: total_monthly_sales
+        description: "Total aggregated unit sales volume for the month"
+        tests:
+          - not_null
+      - name: avg_sell_price
+        description: "Average unit selling price during the month"
+      - name: selling_days
+        description: "Number of days in month with non-zero sales"

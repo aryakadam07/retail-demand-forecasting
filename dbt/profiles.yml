@@ -14,6 +14,6 @@ retail_m5_dw:
 
     local:
       type: duckdb
-      path: "data/m5_warehouse.duckdb"
+      path: "../data/m5_warehouse.duckdb"
       schema: "retail_m5_dw"
       threads: 4

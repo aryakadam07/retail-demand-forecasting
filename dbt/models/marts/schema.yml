@@ -1,0 +1,72 @@
+version: 2
+
+models:
+  - name: fct_daily_sales
+    description: >
+      Analytical mart table for daily sales.
+      Grain: One record per item_id + store_id + sales_date combination.
+    columns:
+      - name: sales_date
+        description: "ISO calendar date of sales transaction"
+        tests:
+          - not_null
+      - name: item_id
+        description: "Product SKU identifier"
+        tests:
+          - not_null
+      - name: store_id
+        description: "Store location identifier"
+        tests:
+          - not_null
+      - name: sales
+        description: "Daily unit sales volume"
+        tests:
+          - not_null
+
+  - name: fct_weekly_sales
+    description: >
+      Analytical mart table for weekly sales aggregations.
+      Grain: One record per item_id + store_id + wm_yr_wk combination.
+    columns:
+      - name: wm_yr_wk
+        description: "Walmart weekly temporal ID"
+        tests:
+          - not_null
+      - name: item_id
+        description: "Product SKU identifier"
+        tests:
+          - not_null
+      - name: store_id
+        description: "Store location identifier"
+        tests:
+          - not_null
+      - name: total_weekly_sales
+        description: "Total aggregated unit sales volume for the week"
+        tests:
+          - not_null
+
+  - name: fct_monthly_sales
+    description: >
+      Analytical mart table for monthly sales aggregations.
+      Grain: One record per item_id + store_id + year + month combination.
+    columns:
+      - name: year
+        description: "Calendar year YYYY"
+        tests:
+          - not_null
+      - name: month
+        description: "Calendar month 1 to 12"
+        tests:
+          - not_null
+      - name: item_id
+        description: "Product SKU identifier"
+        tests:
+          - not_null
+      - name: store_id
+        description: "Store location identifier"
+        tests:
+          - not_null
+      - name: total_monthly_sales
+        description: "Total aggregated unit sales volume for the month"
+        tests:
+          - not_null

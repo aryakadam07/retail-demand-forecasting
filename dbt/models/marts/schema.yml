@@ -1,6 +1,81 @@
 version: 2
 
 models:
+  - name: mart_sales_forecasting
+    description: >
+      Primary analytical forecasting mart combining sales history, pricing, product hierarchy, and calendar features.
+      Grain: One record per item_id + store_id + date combination.
+      Intended Use: Direct consumption by Prophet, LightGBM, and downstream inventory optimization models.
+    columns:
+      - name: date
+        description: "ISO calendar date (YYYY-MM-DD) for time-series indexing"
+        tests:
+          - not_null
+      - name: sales_date
+        description: "ISO calendar date of sales transaction"
+        tests:
+          - not_null
+      - name: item_id
+        description: "Product SKU identifier (preserves item-level hierarchy)"
+        tests:
+          - not_null
+      - name: store_id
+        description: "Store location identifier (preserves store-level hierarchy)"
+        tests:
+          - not_null
+      - name: state_id
+        description: "US state identifier code (CA, TX, WI)"
+        tests:
+          - not_null
+      - name: category
+        description: "Product category classification (FOODS, HOBBIES, HOUSEHOLD)"
+        tests:
+          - not_null
+      - name: cat_id
+        description: "Product category classification alias"
+        tests:
+          - not_null
+      - name: department
+        description: "Product department classification"
+        tests:
+          - not_null
+      - name: dept_id
+        description: "Product department classification alias"
+        tests:
+          - not_null
+      - name: sales
+        description: "Daily unit sales volume target variable"
+        tests:
+          - not_null
+      - name: sell_price
+        description: "Unit selling price in USD for price elasticity modeling"
+      - name: wm_yr_wk
+        description: "Walmart weekly temporal ID"
+      - name: year
+        description: "Calendar year YYYY"
+      - name: month
+        description: "Calendar month (1 to 12)"
+      - name: weekday
+        description: "Day of week name string"
+      - name: day_of_week
+        description: "Numeric day of week (1 to 7)"
+      - name: day_id
+        description: "Day identifier column (d_1 to d_1969)"
+      - name: event_name_1
+        description: "Primary holiday/event name indicator"
+      - name: event_type_1
+        description: "Primary holiday/event classification category"
+      - name: event_name_2
+        description: "Secondary holiday/event name indicator"
+      - name: event_type_2
+        description: "Secondary holiday/event classification category"
+      - name: snap_ca
+        description: "SNAP entitlement binary indicator for California"
+      - name: snap_tx
+        description: "SNAP entitlement binary indicator for Texas"
+      - name: snap_wi
+        description: "SNAP entitlement binary indicator for Wisconsin"
+
   - name: fct_daily_sales
     description: >
       Analytical mart table for daily sales.

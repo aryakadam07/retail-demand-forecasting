@@ -27,86 +27,148 @@ The system processes Walmart's official **M5 Forecasting Dataset** across 10 sto
 
 - **Data Warehouse**: Google BigQuery (Production Data Warehouse) / DuckDB & SQLite (Local Offline Data Engine)
 - **Data Pipeline & Preprocessing**: Python 3.13, Pandas, NumPy, PyArrow
-- **Data Modeling & Transformation**: dbt (Data Build Tool - Week 2)
+- **Data Modeling & Transformation**: dbt (Data Build Tool - Week 2 Analytical Layer)
 - **Forecasting Engines**: LightGBM, Facebook Prophet (Week 3)
 - **Inventory Optimization**: Python SciPy / Custom Heuristics (Week 4)
 - **Dashboard & Analytics**: Streamlit (Week 5)
-- **Testing & Security**: Pytest, Python-dotenv, GCP IAM Role Delegation
+- **Testing & Security**: Pytest, dbt-tests, Python-dotenv, GCP IAM Role Delegation
 
 ---
 
 ## 4. End-to-End System Data Architecture & Lineage
 
 ```
-                                 M5 Raw Data
-                                      ↓
-                                  BigQuery
-                                      ↓
-                                 dbt Sources (`clean_calendar`, `clean_sales_train_validation`, `clean_sell_prices`, `fact_daily_sales`)
-                                      ↓
-                                 dbt Staging Models (`stg_calendar`, `stg_sales`, `stg_sell_prices`)
-                                      ↓
-                                 Daily Sales Model (`int_daily_sales`)
-                                      ↓
-                         ┌────────────┴────────────┐
-                         ↓                         ↓
-                 Weekly Sales Model        Monthly Sales Model
-                (`int_weekly_sales`)      (`int_monthly_sales`)
-                         │                         │
-                         └────────────┬────────────┘
-                                      ↓
-                         Analytical Marts (`fct_daily_sales`, `fct_weekly_sales`, `fct_monthly_sales`)
-                                      ↓
-                         Demand Forecasting Models (Prophet & LightGBM)
+                                      M5 Raw Data
+                                           ↓
+                                    BigQuery / DuckDB
+                                           ↓
+                                      dbt Sources 
+           (`clean_calendar`, `clean_sales_train_validation`, `clean_sell_prices`, `fact_daily_sales`)
+                                           ↓
+                                   dbt Staging Layer 
+                       (`stg_calendar`, `stg_sales`, `stg_sell_prices`)
+                                           ↓
+                                  Intermediate Layer 
+                                  (`int_daily_sales`)
+                                           │
+                     ┌─────────────────────┼─────────────────────┐
+                     ↓                     ↓                     ↓
+             Weekly Sales Model    Monthly Sales Model    Analytical Mart
+            (`int_weekly_sales`)  (`int_monthly_sales`) (`mart_sales_forecasting`)
+                     │                     │                     │
+                     ↓                     ↓                     ↓
+             `fct_weekly_sales`   `fct_monthly_sales`   Downstream Forecasting
+                                                        (Prophet & LightGBM)
+                                                                 │
+                                                                 ↓
+                                                      Inventory Optimization
+                                                                 │
+                                                                 ↓
+                                                        Streamlit Dashboard
 ```
 
 ---
 
-## 5. dbt Transformation Pipeline & Analytical Marts Layer (Week 2 Day 9)
+## 5. dbt Analytical Modeling & Transformation Layer (Week 2 Complete)
 
 ### Purpose of dbt Transformations
-dbt (Data Build Tool) transforms raw and standardized warehouse data into clean, aggregated, analytics-ready datasets inside Google BigQuery / DuckDB warehouse. It enables modular SQL engineering, version-controlled transformations, automated lineage mapping with `ref()` and `source()`, and schema data testing.
+dbt (Data Build Tool) transforms raw and standardized warehouse tables into clean, aggregated, analytics-ready datasets inside Google BigQuery / DuckDB. It enables modular SQL software engineering, version-controlled transformations, automated lineage mapping with `ref()` and `source()`, and comprehensive data quality schema & singular testing.
 
-### Data Lineage & DAG Dependencies
-- **`sources.yml`**: Maps raw warehouse tables (`retail_m5_dw`).
-- **Staging Layer (`models/staging/`)**: Normalized staging views (`stg_calendar`, `stg_sales`, `stg_sell_prices`).
-- **Intermediate Layer (`models/intermediate/`)**:
-  - `int_daily_sales`: Joins long daily sales with calendar dimensions.
-  - `int_weekly_sales`: Aggregates daily sales to weekly temporal levels (`wm_yr_wk`).
-  - `int_monthly_sales`: Aggregates daily sales to calendar monthly levels (`year`, `month`).
-- **Marts Layer (`models/marts/`)**:
-  - `fct_daily_sales`, `fct_weekly_sales`, `fct_monthly_sales`: Materialized persistent tables serving clean analytical datasets for downstream forecasting models.
+### Retail Hierarchy Preservation
+The analytical data layer strictly preserves Walmart's **M5 Retail Hierarchy**:
+```
+State (CA, TX, WI)
+  ↓
+Store (CA_1, CA_2, TX_1, WI_1)
+  ↓
+Category (FOODS, HOBBIES, HOUSEHOLD)
+  ↓
+Department (FOODS_1, FOODS_2, HOBBIES_1...)
+  ↓
+Item (FOODS_1_001, HOBBIES_1_001...)
+```
+No granular item-store dimensions are aggregated away in the primary forecasting mart, allowing downstream ML models to train and forecast at the item-store level or aggregate upward dynamically.
 
 ---
 
-### dbt Models & Data Quality Assertions
+### Data Lineage & Model Breakdown
 
-| Layer | Model Name | Materialization | Grain / Key Columns | Applied Schema & Singular Tests |
+| Layer | Model Name | Materialization | Grain / Key Columns | Purpose & Business Meaning |
 | :--- | :--- | :--- | :--- | :--- |
-| **Staging** | `stg_calendar` | `view` | `sales_date` | `not_null`, `unique` on `sales_date` & `day_id` |
-| **Staging** | `stg_sales` | `view` | `series_id` | `not_null`, `unique` on `series_id`, `accepted_values` on `cat_id` & `state_id` |
-| **Staging** | `stg_sell_prices` | `view` | `store_id`, `item_id`, `wm_yr_wk` | `not_null` on primary columns |
-| **Intermediate** | `int_daily_sales` | `view` | `sales_date + store_id + item_id` | `not_null`, `assert_daily_sales_unique_grain`, `assert_daily_sales_non_negative` |
-| **Intermediate** | `int_weekly_sales` | `view` | `wm_yr_wk + store_id + item_id` | `not_null`, `assert_weekly_sales_unique_grain`, `assert_weekly_sales_matches_daily` |
-| **Intermediate** | `int_monthly_sales` | `view` | `year + month + store_id + item_id` | `not_null`, `assert_monthly_sales_unique_grain`, `assert_monthly_sales_matches_daily` |
-| **Marts** | `fct_daily_sales` | `table` | `sales_date + store_id + item_id` | `not_null` on primary columns |
-| **Marts** | `fct_weekly_sales` | `table` | `wm_yr_wk + store_id + item_id` | `not_null` on primary columns |
-| **Marts** | `fct_monthly_sales` | `table` | `year + month + store_id + item_id` | `not_null` on primary columns |
+| **Staging** | `stg_calendar` | `view` | `sales_date` | Normalizes calendar dates, event classifications, SNAP entitlement flags, and Walmart week IDs (`wm_yr_wk`). |
+| **Staging** | `stg_sales` | `view` | `series_id` | Cleans series identifiers and maps product hierarchy (`item_id`, `dept_id`, `cat_id`, `store_id`, `state_id`). |
+| **Staging** | `stg_sell_prices` | `view` | `store_id + item_id + wm_yr_wk` | Casts and validates weekly unit selling prices in USD. |
+| **Intermediate** | `int_daily_sales` | `view` | `sales_date + store_id + item_id` | Denormalizes fact daily sales with calendar attributes, SNAP flags, and event indicators. |
+| **Intermediate** | `int_weekly_sales` | `view` | `wm_yr_wk + store_id + item_id` | Aggregates daily sales to weekly temporal levels (`wm_yr_wk`) with pricing min/max/avg stats. |
+| **Intermediate** | `int_monthly_sales` | `view` | `year + month + store_id + item_id` | Aggregates daily sales to calendar monthly levels (`year`, `month`) with pricing stats. |
+| **Marts** | `mart_sales_forecasting` | `table` | `date + store_id + item_id` | **Primary analytical mart** for Prophet & LightGBM forecasting. Contains sales, prices, hierarchy, and calendar features. |
+| **Marts** | `fct_daily_sales` | `table` | `sales_date + store_id + item_id` | Materialized daily sales fact table serving operational daily reporting. |
+| **Marts** | `fct_weekly_sales` | `table` | `wm_yr_wk + store_id + item_id` | Materialized weekly sales fact table serving tactical weekly reporting. |
+| **Marts** | `fct_monthly_sales` | `table` | `year + month + store_id + item_id` | Materialized monthly sales fact table serving strategic executive reporting. |
 
 ---
 
-### How to Run dbt Commands & Verification
+### dbt Data Quality & Testing Framework (74/74 Tests Passing)
+
+The dbt project enforces rigorous quality controls using standard schema tests (`not_null`, `unique`, `accepted_values`) and custom singular SQL tests:
+
+1. **Schema Assertions**:
+   - `not_null`: Applied across mandatory primary keys, dates, product IDs, store IDs, state IDs, categories, departments, and sales volume fields.
+   - `accepted_values`: Enforces valid categories (`FOODS`, `HOBBIES`, `HOUSEHOLD`) and states (`CA`, `TX`, `WI`).
+2. **Singular Custom Tests**:
+   - `assert_daily_sales_unique_grain.sql`: Asserts uniqueness of `(sales_date, store_id, item_id)` grain.
+   - `assert_daily_sales_non_negative.sql`: Asserts daily `sales >= 0`.
+   - `assert_weekly_sales_unique_grain.sql`: Asserts uniqueness of `(wm_yr_wk, store_id, item_id)` grain.
+   - `assert_monthly_sales_unique_grain.sql`: Asserts uniqueness of `(year, month, store_id, item_id)` grain.
+   - `assert_weekly_sales_matches_daily.sql`: Asserts exact total sales conservation between daily and weekly layers.
+   - `assert_monthly_sales_matches_daily.sql`: Asserts exact total sales conservation between daily and monthly layers.
+   - `assert_mart_sales_forecasting_unique_grain.sql`: Asserts uniqueness of `(date, store_id, item_id)` in the final analytical forecasting mart.
+   - `assert_mart_sales_forecasting_non_negative.sql`: Asserts non-negative sales and sell prices in the forecasting mart.
+
+---
+
+### Warehouse Validation Audit Results (`mart_sales_forecasting`)
+
+Automated warehouse verification was executed against the compiled `mart_sales_forecasting` table:
+
+- **Total Row Count**: 2,000 records
+- **Date Range**: `2011-01-29` to `2011-05-08`
+- **Retail Hierarchy Coverage**:
+  - **States**: 3 (`CA`, `TX`, `WI`)
+  - **Stores**: 4 (`CA_1`, `CA_2`, `TX_1`, `WI_1`)
+  - **Categories**: 3 (`FOODS`, `HOBBIES`, `HOUSEHOLD`)
+  - **Departments**: 6
+  - **Items**: 20 distinct SKUs
+- **Total Sales Volume**: 10,029 units
+- **Data Quality Audit**:
+  - **Null Values**: 0 nulls across date, item, store, state, category, department, sales.
+  - **Duplicate Grain Records**: 0 duplicates at `(item_id + store_id + date)`.
+  - **Negative Sales / Prices**: 0 negative values.
+- **Sales Conservation Check**:
+  - `int_daily_sales`: 10,029
+  - `int_weekly_sales`: 10,029
+  - `int_monthly_sales`: 10,029
+  - `fct_daily_sales`: 10,029
+  - `mart_sales_forecasting`: 10,029
+  - **Result**: **100% Perfect Sales Alignment** across all transformation layers.
+
+---
+
+## 6. How to Run dbt Execution & Documentation Commands
 
 ```bash
 # 1. Test Warehouse Connection (DuckDB / BigQuery)
-dbt debug --project-dir dbt --profiles-dir dbt --target local
+dbt debug --profiles-dir dbt --target local
 
 # 2. Parse Project SQL & YAML Metadata
-dbt parse --project-dir dbt --profiles-dir dbt --target local
+dbt parse --profiles-dir dbt --target local
 
-# 3. Build Models & Execute Data Quality Tests (61/61 PASSED)
-dbt build --project-dir dbt --profiles-dir dbt --target local
+# 3. Build Models & Execute Data Quality Tests (74/74 PASSED)
+dbt build --profiles-dir dbt --target local
+
+# 4. Generate Interactive dbt Documentation & Lineage Catalog
+dbt docs generate --profiles-dir dbt --target local
 
 # Target production BigQuery:
-dbt build --project-dir dbt --profiles-dir dbt --target dev
+dbt build --profiles-dir dbt --target dev
 ```

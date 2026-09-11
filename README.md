@@ -1,10 +1,10 @@
 # Retail Demand Forecasting & Inventory Optimization
 
-[![Streamlit App](https://img.shields.io/badge/Streamlit-Live%20Executive%20Dashboard-FF4B4B?style=for-the-badge&logo=streamlit)](https://retail-demand-forecasting.streamlit.app)
+[![Streamlit App](https://img.shields.io/badge/Streamlit-Live%20Executive%20Dashboard-FF4B4B?style=for-the-badge&logo=streamlit)](https://aryakadam07-retail-demand-forecasting-dashboardapp-pzpg9k.streamlit.app)
 [![GitHub](https://img.shields.io/badge/GitHub-aryakadam07%2Fretail--demand--forecasting-181717?style=for-the-badge&logo=github)](https://github.com/aryakadam07/retail-demand-forecasting)
 [![dbt](https://img.shields.io/badge/dbt-Analytical%20Data%20Marts-FF694B?style=for-the-badge&logo=dbt)](https://github.com/aryakadam07/retail-demand-forecasting)
 
-> 🌐 **Live Web Application**: [https://retail-demand-forecasting.streamlit.app](https://retail-demand-forecasting.streamlit.app)  
+> 🌐 **Live Web Application**: [https://aryakadam07-retail-demand-forecasting-dashboardapp-pzpg9k.streamlit.app](https://aryakadam07-retail-demand-forecasting-dashboardapp-pzpg9k.streamlit.app)  
 > 📊 **Data Warehouse**: Google BigQuery & DuckDB  
 > 🤖 **ML Models**: Prophet & LightGBM Demand Forecasting Engine  
 

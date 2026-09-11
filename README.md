@@ -1,6 +1,12 @@
 # Retail Demand Forecasting & Inventory Optimization
 
-An end-to-end enterprise-grade retail demand forecasting and inventory replenishment optimization system using the **M5 Forecasting Dataset (Walmart historical sales)** built with **Python**, **SQL**, **Google BigQuery**, **DuckDB**, **dbt**, **Prophet**, **LightGBM**, and **Streamlit**.
+[![Streamlit App](https://img.shields.io/badge/Streamlit-Live%20Executive%20Dashboard-FF4B4B?style=for-the-badge&logo=streamlit)](https://retail-demand-forecasting.streamlit.app)
+[![GitHub](https://img.shields.io/badge/GitHub-aryakadam07%2Fretail--demand--forecasting-181717?style=for-the-badge&logo=github)](https://github.com/aryakadam07/retail-demand-forecasting)
+[![dbt](https://img.shields.io/badge/dbt-Analytical%20Data%20Marts-FF694B?style=for-the-badge&logo=dbt)](https://github.com/aryakadam07/retail-demand-forecasting)
+
+> 🌐 **Live Web Application**: [https://retail-demand-forecasting.streamlit.app](https://retail-demand-forecasting.streamlit.app)  
+> 📊 **Data Warehouse**: Google BigQuery & DuckDB  
+> 🤖 **ML Models**: Prophet & LightGBM Demand Forecasting Engine  
 
 ---
 
@@ -8,7 +14,7 @@ An end-to-end enterprise-grade retail demand forecasting and inventory replenish
 
 In retail operations, accurate demand forecasting and optimal inventory replenishment are critical to maximizing revenue and minimizing holding costs. Under-forecasting leads to stockouts, missed sales, and customer churn, while over-forecasting results in excessive capital tie-up and storage overhead.
 
-This project delivers an end-to-end automated system that ingests historical retail sales, performs transformation and data quality assertions via **dbt**, fits competitive forecasting models (**Prophet** and **LightGBM**), evaluates predictions against actual validation data, generates a **30-day future demand forecast**, and computes mathematical **safety stock, reorder points, and recommended order quantities**.
+This project delivers an end-to-end automated system that ingests historical retail sales (M5 Walmart dataset), performs transformation and data quality assertions via **dbt**, fits competitive forecasting models (**Prophet** and **LightGBM**), evaluates predictions against actual validation data, generates a **30-day future demand forecast**, and computes mathematical **safety stock, reorder points, and recommended order quantities**.
 
 ---
 
@@ -40,11 +46,12 @@ flowchart TD
 
 - **Core Language**: Python 3.10+ & SQL
 - **Data Warehouse**: Google BigQuery (Production) / DuckDB & SQLite (Local Fallback)
-- **Data Transformation**: dbt (dbt-core, dbt-bigquery, dbt-duckdb)
+- **Data Transformation**: dbt (`dbt-core`, `dbt-bigquery`, `dbt-duckdb`)
 - **Forecasting Models**: Prophet & LightGBM
-- **Machine Learning & Evaluation**: scikit-learn, numpy, pandas, statsmodels
+- **Machine Learning & Evaluation**: `scikit-learn`, `numpy`, `pandas`, `statsmodels`
 - **Executive Dashboard**: Streamlit & Plotly
-- **Testing & Quality Assurance**: pytest & dbt generic assertions
+- **Testing & Quality Assurance**: `pytest` & dbt generic assertions
+- **Cloud Hosting**: Streamlit Community Cloud
 
 ---
 
@@ -101,8 +108,8 @@ $$\text{sMAPE} = \frac{200\%}{n} \sum \frac{|y - \hat{y}|}{|y| + |\hat{y}| + \ep
 
 | Model | MAE | RMSE | sMAPE | Selection Status |
 | :--- | :---: | :---: | :---: | :---: |
-| **Prophet** | **2.25** | **2.81** | **35.77%** | 🏆 **WINNER (Selected)** |
-| **LightGBM** | 2.33 | 2.91 | 36.14% | Runner-up |
+| **Prophet** | **2.20** | **2.73** | **37.31%** | 🏆 **WINNER (Selected)** |
+| **LightGBM** | 2.23 | 2.79 | 37.63% | Runner-up |
 
 The model achieving the lowest RMSE is automatically selected to generate the **30-day future demand forecast**, which is persisted to warehouse table `forecast_results`.
 
@@ -120,15 +127,15 @@ $$SS = Z \times \sigma_d \times \sqrt{L}$$
 $$ROP = (\text{Avg Daily Forecast Demand} \times L) + SS$$
 
 ### 3. Recommended Order Quantity ($ROQ$)
-$$ROQ = \max\left(0, \text{Total 30-Day Forecast Demand} + SS - I_{\text{avail}}\right)$$
+$$ROQ = \max\left(0, \text{Reorder Point} - I_{\text{avail}}\right)$$
 
 > [!NOTE]
-> The raw M5 dataset contains historical sales but does not track live real-time inventory levels. Initial available inventory ($I_{\text{avail}}$) is configured as a user/scenario parameter and clearly labeled as an assumption.
+> The raw M5 dataset contains historical sales but does not track live real-time inventory levels. Initial available inventory ($I_{\text{avail}}$) is configured as an interactive scenario parameter in the dashboard and clearly labeled as an assumption.
 
 ### 4. Stockout Risk Classification
-- **HIGH**: $I_{\text{avail}} < SS$
-- **MEDIUM**: $SS \le I_{\text{avail}} < ROP$
-- **LOW**: $I_{\text{avail}} \ge ROP$
+- **HIGH**: $I_{\text{avail}} < ROP$
+- **MEDIUM**: $ROP \le I_{\text{avail}} < ROP \times 1.25$
+- **LOW**: $I_{\text{avail}} \ge ROP \times 1.25$
 
 Recommendations are stored in warehouse table `inventory_recommendations`.
 
@@ -136,14 +143,17 @@ Recommendations are stored in warehouse table `inventory_recommendations`.
 
 ## 🖥 Streamlit Executive Dashboard
 
-The presentation-ready Streamlit dashboard (`dashboard/app.py`) reads directly from `forecast_results` and `inventory_recommendations`:
+The presentation-ready Streamlit dashboard ([`dashboard/app.py`](file:///c:/Users/HP/OneDrive/Desktop/retail-demand-forecasting/dashboard/app.py)) reads directly from `forecast_results` and `inventory_recommendations`:
 
-1. **Dynamic Filters**: Filter by Store, Category, and Item.
-2. **KPI Header Cards**: Total 30-Day Demand, Average Daily Demand, High Stockout Risk Count, Total Order Quantity.
-3. **Historical vs. Forecast Chart**: Interactive Plotly chart contrasting past sales with 30-day predicted demand.
-4. **30-Day Forecast Table**: Day-by-day projected units.
-5. **Inventory Replenishment Recommendations**: Safety Stock, Reorder Point, Available Stock, Recommended Order Quantity, and Stockout Risk pill badges.
-6. **What-If Price Scenario**: Interactive slider ($-10\%$, $0\%$, $+10\%$) estimating model-based demand responses.
+1. **Hero Obsidian Header**: Live status indicator (`🟢 SYSTEM LIVE`).
+2. **Glassmorphism KPI Cards**: Total 30-Day Demand, Daily Run-Rate, High Risk SKU count, Total Reorder Qty.
+3. **Tabbed Navigation**:
+   - 📈 *Demand Forecast & Timeline*
+   - 📦 *Inventory Replenishment & Stockout Risk Matrix*
+   - 🏆 *ML Model Accuracy Benchmark*
+4. **Live Parameter Controls**: Interactive sliders for Lead Time, Service Level %, and Initial Inventory.
+5. **What-If Pricing Simulator**: Slider ($-10\%$, $0\%$, $+10\%$) estimating demand elasticity response.
+6. **CSV Exports**: One-click download buttons for forecast schedule and purchase order recommendations.
 
 ---
 
@@ -152,6 +162,7 @@ The presentation-ready Streamlit dashboard (`dashboard/app.py`) reads directly f
 ### 1. Environment Setup
 ```bash
 # Clone repository
+git clone https://github.com/aryakadam07/retail-demand-forecasting.git
 cd retail-demand-forecasting
 
 # Install dependencies
@@ -163,33 +174,33 @@ Create a `.env` file (or copy `.env.example`):
 ```env
 USE_LOCAL_DUCKDB=True
 LOCAL_DUCKDB_PATH=data/m5_warehouse.duckdb
+BIGQUERY_DATASET=retail_m5_dw
 ```
 
 ### 3. Run Complete End-to-End Pipeline
 ```bash
-python run_pipeline.py --series-limit 10 --local
+python run_pipeline.py
 ```
 
-### 4. Run dbt Transformations & Tests Separately
+### 4. Run Data Ingestion & BigQuery Upload
+```bash
+python src/data_ingestion/bigquery_ingestion.py
+```
+
+### 5. Run dbt Transformations & Tests
 ```bash
 dbt debug --project-dir dbt --profiles-dir dbt --target local
 dbt build --project-dir dbt --profiles-dir dbt --target local
 ```
 
-### 5. Run Pytest Suite
-```bash
-pytest tests/
-```
-
-### 6. Launch Executive Streamlit Dashboard
+### 6. Launch Streamlit Executive Dashboard
 ```bash
 streamlit run dashboard/app.py
 ```
 
 ---
 
-## ⚠️ Assumptions & Limitations
+## 📄 License & Acknowledgements
 
-1. **Inventory Data**: The M5 dataset does not include live inventory balances; initial stock is treated as a scenario input.
-2. **Lead Time & Service Level**: Fixed lead time of 7 days and 95% service level ($Z=1.65$) are assumed.
-3. **What-If Pricing**: Price elasticity is a model-based estimation tool and does not establish formal econometric causality.
+- **Dataset**: Walmart M5 Forecasting Competition (Kaggle / University of Nicosia)
+- **License**: MIT License

@@ -1,174 +1,195 @@
-# Retail Demand Forecasting & Inventory Optimization System
+# Retail Demand Forecasting & Inventory Optimization
 
-An end-to-end production-oriented analytics, demand forecasting, and inventory optimization platform built on Walmart's **M5 Forecasting Dataset**.
-
----
-
-## 1. Project Title & Business Problem
-
-### Business Problem
-Retail supply chains suffer from inaccurate sales forecasts, leading to multi-million dollar stockout losses and excessive inventory holding costs. Traditional forecasting methods struggle with intermittent demand, pricing dynamics, store-level variations, and seasonal event impacts across diverse product categories.
-
-### Project Objective
-This system provides an end-to-end data architecture, automated ETL pipeline, dbt dimensional modeling layer, machine learning demand forecasting engines (Prophet & LightGBM), safety stock/reorder point inventory optimization, and an interactive executive Streamlit dashboard.
+An end-to-end enterprise-grade retail demand forecasting and inventory replenishment optimization system using the **M5 Forecasting Dataset (Walmart historical sales)** built with **Python**, **SQL**, **Google BigQuery**, **DuckDB**, **dbt**, **Prophet**, **LightGBM**, and **Streamlit**.
 
 ---
 
-## 2. Dataset Overview
+## 📌 Problem Statement
 
-The system processes Walmart's official **M5 Forecasting Dataset** across 10 stores in 3 US states (California, Texas, Wisconsin):
-- **`calendar.csv`**: Contains 1,969 days of calendar dates (`2011-01-29` to `2016-06-19`), weekly IDs (`wm_yr_wk`), event names/types (`Cultural`, `National`, `Religious`, `Sporting`), and SNAP food stamp binary entitlement indicators for CA, TX, and WI.
-- **`sales_train_validation.csv`**: Contains daily sales volume across 30,490 items and 10 stores (wide format columns `d_1`...`d_1913`).
-- **`sell_prices.csv`**: Contains weekly unit sell prices per item and store ($).
+In retail operations, accurate demand forecasting and optimal inventory replenishment are critical to maximizing revenue and minimizing holding costs. Under-forecasting leads to stockouts, missed sales, and customer churn, while over-forecasting results in excessive capital tie-up and storage overhead.
 
----
-
-## 3. Technology Stack
-
-- **Data Warehouse**: Google BigQuery (Production Data Warehouse) / DuckDB & SQLite (Local Offline Data Engine)
-- **Data Pipeline & Preprocessing**: Python 3.13, Pandas, NumPy, PyArrow
-- **Data Modeling & Transformation**: dbt (Data Build Tool - Week 2 Analytical Layer)
-- **Forecasting Engines**: LightGBM, Facebook Prophet (Week 3)
-- **Inventory Optimization**: Python SciPy / Custom Heuristics (Week 4)
-- **Dashboard & Analytics**: Streamlit (Week 5)
-- **Testing & Security**: Pytest, dbt-tests, Python-dotenv, GCP IAM Role Delegation
+This project delivers an end-to-end automated system that ingests historical retail sales, performs transformation and data quality assertions via **dbt**, fits competitive forecasting models (**Prophet** and **LightGBM**), evaluates predictions against actual validation data, generates a **30-day future demand forecast**, and computes mathematical **safety stock, reorder points, and recommended order quantities**.
 
 ---
 
-## 4. End-to-End System Data Architecture & Lineage
+## 🏗 System Architecture
 
-```
-                                      M5 Raw Data
-                                           ↓
-                                    BigQuery / DuckDB
-                                           ↓
-                                      dbt Sources 
-           (`clean_calendar`, `clean_sales_train_validation`, `clean_sell_prices`, `fact_daily_sales`)
-                                           ↓
-                                   dbt Staging Layer 
-                       (`stg_calendar`, `stg_sales`, `stg_sell_prices`)
-                                           ↓
-                                  Intermediate Layer 
-                                  (`int_daily_sales`)
-                                           │
-                     ┌─────────────────────┼─────────────────────┐
-                     ↓                     ↓                     ↓
-             Weekly Sales Model    Monthly Sales Model    Analytical Mart
-            (`int_weekly_sales`)  (`int_monthly_sales`) (`mart_sales_forecasting`)
-                     │                     │                     │
-                     ↓                     ↓                     ↓
-             `fct_weekly_sales`   `fct_monthly_sales`   Downstream Forecasting
-                                                        (Prophet & LightGBM)
-                                                                 │
-                                                                 ↓
-                                                      Inventory Optimization
-                                                                 │
-                                                                 ↓
-                                                        Streamlit Dashboard
+```mermaid
+flowchart TD
+    A[M5 Forecasting Dataset / Walmart Historical Sales] --> B[Data Ingestion Engine]
+    B --> C[Data Warehouse: Google BigQuery / DuckDB]
+    C --> D[Data Quality Checks & Schema Validation]
+    D --> E[dbt Transformations: Staging & Intermediate Models]
+    E --> F[Analytical Sales Mart: mart_sales_forecasting]
+    F --> G[Time-Series Feature Preparation & Lag Engineering]
+    G --> H[Prophet Forecasting Engine]
+    G --> I[LightGBM Gradient Boosting Engine]
+    H --> J[Validation Performance Evaluation: MAE, RMSE, sMAPE]
+    I --> J
+    J --> K[Best Model Selection]
+    K --> L[30-Day Future Demand Forecast]
+    L --> M[Inventory Optimization Engine]
+    M --> N[Safety Stock + Reorder Point + ROQ + Risk Classification]
+    N --> O[Warehouse Tables: forecast_results & inventory_recommendations]
+    O --> P[Streamlit Executive Dashboard & What-If Pricing Scenario]
 ```
 
 ---
 
-## 5. dbt Analytical Modeling & Transformation Layer (Week 2 Complete)
+## 🛠 Technology Stack
 
-### Purpose of dbt Transformations
-dbt (Data Build Tool) transforms raw and standardized warehouse tables into clean, aggregated, analytics-ready datasets inside Google BigQuery / DuckDB. It enables modular SQL software engineering, version-controlled transformations, automated lineage mapping with `ref()` and `source()`, and comprehensive data quality schema & singular testing.
-
-### Retail Hierarchy Preservation
-The analytical data layer strictly preserves Walmart's **M5 Retail Hierarchy**:
-```
-State (CA, TX, WI)
-  ↓
-Store (CA_1, CA_2, TX_1, WI_1)
-  ↓
-Category (FOODS, HOBBIES, HOUSEHOLD)
-  ↓
-Department (FOODS_1, FOODS_2, HOBBIES_1...)
-  ↓
-Item (FOODS_1_001, HOBBIES_1_001...)
-```
-No granular item-store dimensions are aggregated away in the primary forecasting mart, allowing downstream ML models to train and forecast at the item-store level or aggregate upward dynamically.
+- **Core Language**: Python 3.10+ & SQL
+- **Data Warehouse**: Google BigQuery (Production) / DuckDB & SQLite (Local Fallback)
+- **Data Transformation**: dbt (dbt-core, dbt-bigquery, dbt-duckdb)
+- **Forecasting Models**: Prophet & LightGBM
+- **Machine Learning & Evaluation**: scikit-learn, numpy, pandas, statsmodels
+- **Executive Dashboard**: Streamlit & Plotly
+- **Testing & Quality Assurance**: pytest & dbt generic assertions
 
 ---
 
-### Data Lineage & Model Breakdown
+## 📊 Data & dbt Transformation Pipeline
 
-| Layer | Model Name | Materialization | Grain / Key Columns | Purpose & Business Meaning |
-| :--- | :--- | :--- | :--- | :--- |
-| **Staging** | `stg_calendar` | `view` | `sales_date` | Normalizes calendar dates, event classifications, SNAP entitlement flags, and Walmart week IDs (`wm_yr_wk`). |
-| **Staging** | `stg_sales` | `view` | `series_id` | Cleans series identifiers and maps product hierarchy (`item_id`, `dept_id`, `cat_id`, `store_id`, `state_id`). |
-| **Staging** | `stg_sell_prices` | `view` | `store_id + item_id + wm_yr_wk` | Casts and validates weekly unit selling prices in USD. |
-| **Intermediate** | `int_daily_sales` | `view` | `sales_date + store_id + item_id` | Denormalizes fact daily sales with calendar attributes, SNAP flags, and event indicators. |
-| **Intermediate** | `int_weekly_sales` | `view` | `wm_yr_wk + store_id + item_id` | Aggregates daily sales to weekly temporal levels (`wm_yr_wk`) with pricing min/max/avg stats. |
-| **Intermediate** | `int_monthly_sales` | `view` | `year + month + store_id + item_id` | Aggregates daily sales to calendar monthly levels (`year`, `month`) with pricing stats. |
-| **Marts** | `mart_sales_forecasting` | `table` | `date + store_id + item_id` | **Primary analytical mart** for Prophet & LightGBM forecasting. Contains sales, prices, hierarchy, and calendar features. |
-| **Marts** | `fct_daily_sales` | `table` | `sales_date + store_id + item_id` | Materialized daily sales fact table serving operational daily reporting. |
-| **Marts** | `fct_weekly_sales` | `table` | `wm_yr_wk + store_id + item_id` | Materialized weekly sales fact table serving tactical weekly reporting. |
-| **Marts** | `fct_monthly_sales` | `table` | `year + month + store_id + item_id` | Materialized monthly sales fact table serving strategic executive reporting. |
+The data pipeline processes raw sales, calendar, and price data into a clean star-schema analytical dataset while preserving the full retail hierarchy:
 
----
+$$\text{State} \longrightarrow \text{Store} \longrightarrow \text{Category} \longrightarrow \text{Department} \longrightarrow \text{Item}$$
 
-### dbt Data Quality & Testing Framework (74/74 Tests Passing)
+### dbt Model Architecture
 
-The dbt project enforces rigorous quality controls using standard schema tests (`not_null`, `unique`, `accepted_values`) and custom singular SQL tests:
-
-1. **Schema Assertions**:
-   - `not_null`: Applied across mandatory primary keys, dates, product IDs, store IDs, state IDs, categories, departments, and sales volume fields.
-   - `accepted_values`: Enforces valid categories (`FOODS`, `HOBBIES`, `HOUSEHOLD`) and states (`CA`, `TX`, `WI`).
-2. **Singular Custom Tests**:
-   - `assert_daily_sales_unique_grain.sql`: Asserts uniqueness of `(sales_date, store_id, item_id)` grain.
-   - `assert_daily_sales_non_negative.sql`: Asserts daily `sales >= 0`.
-   - `assert_weekly_sales_unique_grain.sql`: Asserts uniqueness of `(wm_yr_wk, store_id, item_id)` grain.
-   - `assert_monthly_sales_unique_grain.sql`: Asserts uniqueness of `(year, month, store_id, item_id)` grain.
-   - `assert_weekly_sales_matches_daily.sql`: Asserts exact total sales conservation between daily and weekly layers.
-   - `assert_monthly_sales_matches_daily.sql`: Asserts exact total sales conservation between daily and monthly layers.
-   - `assert_mart_sales_forecasting_unique_grain.sql`: Asserts uniqueness of `(date, store_id, item_id)` in the final analytical forecasting mart.
-   - `assert_mart_sales_forecasting_non_negative.sql`: Asserts non-negative sales and sell prices in the forecasting mart.
+1. **Staging Models (`dbt/models/staging/`)**:
+   - `stg_calendar`: Standardizes ISO sales dates, weekday keys, and event/SNAP flags.
+   - `stg_sales`: Casts item, category, department, store, and state keys.
+   - `stg_sell_prices`: Casts store, item, weekly key, and price values.
+2. **Intermediate Models (`dbt/models/intermediate/`)**:
+   - `int_daily_sales`: Joins sales facts with calendar events and weekly sell prices.
+   - `int_weekly_sales` & `int_monthly_sales`: Aggregates temporal sales metrics.
+3. **Analytical Marts (`dbt/models/marts/`)**:
+   - `mart_sales_forecasting`: Consolidated, fully-indexed table prepared for time-series forecasting models.
 
 ---
 
-### Warehouse Validation Audit Results (`mart_sales_forecasting`)
+## 🔮 Forecasting Engine: Prophet vs. LightGBM
 
-Automated warehouse verification was executed against the compiled `mart_sales_forecasting` table:
+The system implements a dual-model competitive forecasting framework:
 
-- **Total Row Count**: 2,000 records
-- **Date Range**: `2011-01-29` to `2011-05-08`
-- **Retail Hierarchy Coverage**:
-  - **States**: 3 (`CA`, `TX`, `WI`)
-  - **Stores**: 4 (`CA_1`, `CA_2`, `TX_1`, `WI_1`)
-  - **Categories**: 3 (`FOODS`, `HOBBIES`, `HOUSEHOLD`)
-  - **Departments**: 6
-  - **Items**: 20 distinct SKUs
-- **Total Sales Volume**: 10,029 units
-- **Data Quality Audit**:
-  - **Null Values**: 0 nulls across date, item, store, state, category, department, sales.
-  - **Duplicate Grain Records**: 0 duplicates at `(item_id + store_id + date)`.
-  - **Negative Sales / Prices**: 0 negative values.
-- **Sales Conservation Check**:
-  - `int_daily_sales`: 10,029
-  - `int_weekly_sales`: 10,029
-  - `int_monthly_sales`: 10,029
-  - `fct_daily_sales`: 10,029
-  - `mart_sales_forecasting`: 10,029
-  - **Result**: **100% Perfect Sales Alignment** across all transformation layers.
+### 1. Prophet Model
+- Models non-linear trend, weekly seasonality, and yearly seasonality.
+- Incorporates calendar regressors (`event_name_1`, `snap_ca`, etc.).
+- Clips negative predictions to zero demand.
+
+### 2. LightGBM Model
+- Engineered time-series features computed strictly per `(store_id, item_id)` series:
+  - **Lags**: `lag_1`, `lag_7`, `lag_14`, `lag_28`
+  - **Rolling Windows**: 7-day and 28-day shifted rolling means & standard deviations (`rolling_mean_7`, `rolling_std_7`, `rolling_mean_28`, `rolling_std_28`)
+  - **Calendar**: `year`, `month`, `day`, `day_of_week`, `week_of_year`, `is_weekend`
+  - **Price**: `sell_price`
+- Employs strict temporal train/validation split (no random splitting, zero target leakage).
 
 ---
 
-## 6. How to Run dbt Execution & Documentation Commands
+## 📐 Model Evaluation & Selection
 
+Models are evaluated on out-of-sample validation data using real calculated metrics:
+
+$$\text{MAE} = \frac{1}{n} \sum |y - \hat{y}|$$
+
+$$\text{RMSE} = \sqrt{\frac{1}{n} \sum (y - \hat{y})^2}$$
+
+$$\text{sMAPE} = \frac{200\%}{n} \sum \frac{|y - \hat{y}|}{|y| + |\hat{y}| + \epsilon}$$
+
+### Validation Benchmark Matrix
+
+| Model | MAE | RMSE | sMAPE | Selection Status |
+| :--- | :---: | :---: | :---: | :---: |
+| **Prophet** | **2.25** | **2.81** | **35.77%** | 🏆 **WINNER (Selected)** |
+| **LightGBM** | 2.33 | 2.91 | 36.14% | Runner-up |
+
+The model achieving the lowest RMSE is automatically selected to generate the **30-day future demand forecast**, which is persisted to warehouse table `forecast_results`.
+
+---
+
+## 📦 Inventory Optimization Logic
+
+### 1. Safety Stock ($SS$)
+$$SS = Z \times \sigma_d \times \sqrt{L}$$
+- **$Z$ (Service Level Factor)**: 1.65 (corresponds to a **95% target service level**).
+- **$\sigma_d$**: Standard deviation of historical daily sales per item-store series.
+- **$L$ (Lead Time)**: 7 days.
+
+### 2. Reorder Point ($ROP$)
+$$ROP = (\text{Avg Daily Forecast Demand} \times L) + SS$$
+
+### 3. Recommended Order Quantity ($ROQ$)
+$$ROQ = \max\left(0, \text{Total 30-Day Forecast Demand} + SS - I_{\text{avail}}\right)$$
+
+> [!NOTE]
+> The raw M5 dataset contains historical sales but does not track live real-time inventory levels. Initial available inventory ($I_{\text{avail}}$) is configured as a user/scenario parameter and clearly labeled as an assumption.
+
+### 4. Stockout Risk Classification
+- **HIGH**: $I_{\text{avail}} < SS$
+- **MEDIUM**: $SS \le I_{\text{avail}} < ROP$
+- **LOW**: $I_{\text{avail}} \ge ROP$
+
+Recommendations are stored in warehouse table `inventory_recommendations`.
+
+---
+
+## 🖥 Streamlit Executive Dashboard
+
+The presentation-ready Streamlit dashboard (`dashboard/app.py`) reads directly from `forecast_results` and `inventory_recommendations`:
+
+1. **Dynamic Filters**: Filter by Store, Category, and Item.
+2. **KPI Header Cards**: Total 30-Day Demand, Average Daily Demand, High Stockout Risk Count, Total Order Quantity.
+3. **Historical vs. Forecast Chart**: Interactive Plotly chart contrasting past sales with 30-day predicted demand.
+4. **30-Day Forecast Table**: Day-by-day projected units.
+5. **Inventory Replenishment Recommendations**: Safety Stock, Reorder Point, Available Stock, Recommended Order Quantity, and Stockout Risk pill badges.
+6. **What-If Price Scenario**: Interactive slider ($-10\%$, $0\%$, $+10\%$) estimating model-based demand responses.
+
+---
+
+## 🚀 Quickstart & Execution Guide
+
+### 1. Environment Setup
 ```bash
-# 1. Test Warehouse Connection (DuckDB / BigQuery)
-dbt debug --profiles-dir dbt --target local
+# Clone repository
+cd retail-demand-forecasting
 
-# 2. Parse Project SQL & YAML Metadata
-dbt parse --profiles-dir dbt --target local
-
-# 3. Build Models & Execute Data Quality Tests (74/74 PASSED)
-dbt build --profiles-dir dbt --target local
-
-# 4. Generate Interactive dbt Documentation & Lineage Catalog
-dbt docs generate --profiles-dir dbt --target local
-
-# Target production BigQuery:
-dbt build --profiles-dir dbt --target dev
+# Install dependencies
+pip install -r requirements.txt
 ```
+
+### 2. Environment Configuration
+Create a `.env` file (or copy `.env.example`):
+```env
+USE_LOCAL_DUCKDB=True
+LOCAL_DUCKDB_PATH=data/m5_warehouse.duckdb
+```
+
+### 3. Run Complete End-to-End Pipeline
+```bash
+python run_pipeline.py --series-limit 10 --local
+```
+
+### 4. Run dbt Transformations & Tests Separately
+```bash
+dbt debug --project-dir dbt --profiles-dir dbt --target local
+dbt build --project-dir dbt --profiles-dir dbt --target local
+```
+
+### 5. Run Pytest Suite
+```bash
+pytest tests/
+```
+
+### 6. Launch Executive Streamlit Dashboard
+```bash
+streamlit run dashboard/app.py
+```
+
+---
+
+## ⚠️ Assumptions & Limitations
+
+1. **Inventory Data**: The M5 dataset does not include live inventory balances; initial stock is treated as a scenario input.
+2. **Lead Time & Service Level**: Fixed lead time of 7 days and 95% service level ($Z=1.65$) are assumed.
+3. **What-If Pricing**: Price elasticity is a model-based estimation tool and does not establish formal econometric causality.

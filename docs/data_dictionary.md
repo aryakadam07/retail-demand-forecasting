@@ -1,98 +1,110 @@
-# Retail Demand Forecasting — Data Dictionary
+# Retail Demand Forecasting & Inventory Optimization — Enterprise Data Dictionary
 
-This document details the schema, column definitions, data types, nullability rules, and domain constraints for all tables in the `retail_m5_dw` Data Warehouse created during **Week 1 (Data Architecture & ETL)**.
-
----
-
-## Table Overview
-
-| Table Name | Layer | Description | Target Engine |
-| :--- | :--- | :--- | :--- |
-| `raw_calendar` | Raw Ingestion | Raw M5 calendar metadata with event annotations | BigQuery / Local |
-| `raw_sales_train_validation` | Raw Ingestion | Raw M5 daily sales volumes across wide columns (`d_1`...`d_N`) | BigQuery / Local |
-| `raw_sell_prices` | Raw Ingestion | Raw M5 weekly unit sell prices by store and item | BigQuery / Local |
-| `clean_calendar` | Data Quality | Standardized ISO dates (`YYYY-MM-DD`), verified event categories | BigQuery / Local |
-| `clean_sales_train_validation` | Data Quality | Cleaned wide sales table with non-negative sales volume constraints | BigQuery / Local |
-| `clean_sell_prices` | Data Quality | Cleaned unit price table with numeric float enforcement | BigQuery / Local |
-| `fact_daily_sales` (alias: `stg_sales_long`) | Analytical Fact Layer | Standardized unpivoted long daily sales table with joined dates & sell prices | BigQuery / Local |
+This document details the complete data warehouse schema, table definitions, data types, primary keys, foreign keys, nullability constraints, and business domain rules for all datasets in the `retail_m5_dw` Data Warehouse across the end-to-end pipeline.
 
 ---
 
-## Analytical Table Schema (`fact_daily_sales`)
+## 📌 Master Warehouse Table Overview
 
-Target Table Name: `retail_m5_dw.fact_daily_sales`  
-Primary Key: `(date, item_id, store_id)`
-
-| Column Name | Data Type | Nullable | Primary Key | Foreign Key / Mapping | Description & Domain Constraints |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `date` | `DATE` / `STRING` | No | Yes | `clean_calendar.date` | ISO-8601 calendar date (`YYYY-MM-DD`). Bounds: `2011-01-29` to `2016-06-19`. |
-| `item_id` | `STRING` | No | Yes | `clean_sales.item_id` | Product stock keeping unit identifier (e.g. `HOBBIES_1_001`, `FOODS_1_002`). |
-| `dept_id` | `STRING` | No | No | `clean_sales.dept_id` | Product department identifier (e.g. `HOBBIES_1`, `FOODS_1`, `HOUSEHOLD_2`). |
-| `cat_id` | `STRING` | No | No | `clean_sales.cat_id` | High-level product category (`FOODS`, `HOBBIES`, `HOUSEHOLD`). |
-| `store_id` | `STRING` | No | Yes | `clean_sales.store_id` | Retail store location identifier (e.g. `CA_1`, `CA_2`, `TX_1`, `WI_1`). |
-| `state_id` | `STRING` | No | No | `clean_sales.state_id` | US state abbreviation where store is located (`CA`, `TX`, `WI`). |
-| `sales` | `INTEGER` / `NUMERIC` | No | No | — | Daily unit sales volume. Non-negative constraint ($sales \ge 0$). |
-| `sell_price` | `FLOAT` / `NUMERIC` | Yes | No | `clean_sell_prices.sell_price` | Unit selling price in USD ($). Nullable for weeks prior to product release in store. |
+| Table Name | Pipeline Layer | Description | Primary Key | Target Engine |
+| :--- | :--- | :--- | :--- | :--- |
+| `raw_calendar` | Ingestion (Raw) | Raw M5 calendar metadata with holiday and SNAP annotations | `date` | BigQuery / DuckDB |
+| `raw_sales_train_validation` | Ingestion (Raw) | Raw M5 daily sales volumes across wide columns (`d_1`...`d_N`) | `id` | BigQuery / DuckDB |
+| `raw_sell_prices` | Ingestion (Raw) | Raw M5 weekly unit sell prices by store and item | `(store_id, item_id, wm_yr_wk)` | BigQuery / DuckDB |
+| `stg_calendar` | dbt Staging | Standardized ISO dates (`YYYY-MM-DD`), verified event categories | `date` | BigQuery / DuckDB |
+| `stg_sales` | dbt Staging | Standardized sales table with non-negative sales volume constraints | `(item_id, store_id)` | BigQuery / DuckDB |
+| `stg_sell_prices` | dbt Staging | Cleaned unit price table with numeric float enforcement | `(store_id, item_id, wm_yr_wk)` | BigQuery / DuckDB |
+| `int_daily_sales` | dbt Intermediate | Joined unpivoted long daily sales table with dates & sell prices | `(date, item_id, store_id)` | BigQuery / DuckDB |
+| `int_weekly_sales` | dbt Intermediate | Aggregated weekly sales and average unit price per series | `(wm_yr_wk, item_id, store_id)` | BigQuery / DuckDB |
+| `int_monthly_sales` | dbt Intermediate | Aggregated monthly sales volume and revenue per series | `(year, month, item_id, store_id)` | BigQuery / DuckDB |
+| `mart_sales_forecasting` | dbt Mart Layer | Consolidated analytical sales mart prepared for ML models | `(date, item_id, store_id)` | BigQuery / DuckDB |
+| `forecast_results` | ML Output | 30-day future demand forecast predictions per item-store series | `(forecast_date, item_id, store_id)` | BigQuery / DuckDB |
+| `inventory_recommendations` | Inventory Engine | Safety stock, reorder point, ROQ, and stockout risk classification | `(item_id, store_id)` | BigQuery / DuckDB |
+| `model_evaluation_metrics` | Validation | Benchmark out-of-sample accuracy metrics (MAE, RMSE, sMAPE) | `model` | BigQuery / DuckDB |
 
 ---
 
-## Data Quality & Clean Tables Schema
+## 📊 Analytical Mart Schema (`mart_sales_forecasting`)
 
-### 1. `clean_calendar`
-Target Table Name: `retail_m5_dw.clean_calendar`
+- **Table Name**: `retail_m5_dw.mart_sales_forecasting`  
+- **Primary Key**: `(date, item_id, store_id)`  
+- **Description**: Central analytical fact table feeding time-series forecasting models.
+
+| Column Name | Data Type | Nullable | Description & Business Rules |
+| :--- | :--- | :---: | :--- |
+| `date` | `DATE` | No | ISO-8601 calendar date (`YYYY-MM-DD`). |
+| `item_id` | `STRING` | No | Stock Keeping Unit identifier (e.g. `HOBBIES_1_001`, `FOODS_1_002`). |
+| `dept_id` | `STRING` | No | Department identifier (e.g. `HOBBIES_1`, `FOODS_1`, `HOUSEHOLD_2`). |
+| `cat_id` | `STRING` | No | High-level product category (`FOODS`, `HOBBIES`, `HOUSEHOLD`). |
+| `store_id` | `STRING` | No | Retail store location identifier (e.g. `CA_1`, `TX_1`, `WI_1`). |
+| `state_id` | `STRING` | No | US state abbreviation (`CA`, `TX`, `WI`). |
+| `sales` | `INTEGER` | No | Daily unit sales volume. Non-negative constraint ($sales \ge 0$). |
+| `wm_yr_wk` | `INTEGER` | No | Walmart weekly key identifier (e.g., `11101`). |
+| `sell_price` | `FLOAT` | Yes | Regular unit selling price in USD ($). |
+| `event_name_1` | `STRING` | Yes | Holiday or special event 1 (e.g., `SuperBowl`, `Easter`). |
+| `event_type_1` | `STRING` | Yes | Event classification (`Sporting`, `Cultural`, `National`, `Religious`). |
+| `snap_CA` | `INTEGER` | No | California SNAP food stamp entitlement flag (`0`/`1`). |
+| `snap_TX` | `INTEGER` | No | Texas SNAP food stamp entitlement flag (`0`/`1`). |
+| `snap_WI` | `INTEGER` | No | Wisconsin SNAP food stamp entitlement flag (`0`/`1`). |
+
+---
+
+## 🤖 Forecasting Output Schema (`forecast_results`)
+
+- **Table Name**: `retail_m5_dw.forecast_results`  
+- **Primary Key**: `(forecast_date, item_id, store_id)`  
+- **Description**: Stores future 30-day demand predictions generated by the winning model.
 
 | Column Name | Data Type | Nullable | Description |
-| :--- | :--- | :--- | :--- |
-| `date` | `DATE` / `STRING` | No | ISO calendar date formatted as `YYYY-MM-DD`. |
-| `wm_yr_wk` | `INTEGER` | No | Walmart weekly temporal identifier (e.g., `11101`). |
-| `weekday` | `STRING` | No | Day of week name (`Monday` ... `Sunday`). |
-| `wday` | `INTEGER` | No | Numerical day of week identifier (`1` = Saturday ... `7` = Friday). |
-| `month` | `INTEGER` | No | Calendar month index (`1` to `12`). |
-| `year` | `INTEGER` | No | Calendar year (`2011` to `2016`). |
-| `d` | `STRING` | No | Day column key mapping (`d_1` to `d_1969`). |
-| `event_name_1` | `STRING` | Yes | Name of holiday or special event occurrence 1. |
-| `event_type_1` | `STRING` | Yes | Domain classification of event 1 (`Sporting`, `Cultural`, `National`, `Religious`). |
-| `event_name_2` | `STRING` | Yes | Name of holiday or special event occurrence 2. |
-| `event_type_2` | `STRING` | Yes | Domain classification of event 2. |
-| `snap_CA` | `INTEGER` | No | Binary flag (`0`/`1`) indicating SNAP food stamp entitlement day in California. |
-| `snap_TX` | `INTEGER` | No | Binary flag (`0`/`1`) indicating SNAP food stamp entitlement day in Texas. |
-| `snap_WI` | `INTEGER` | No | Binary flag (`0`/`1`) indicating SNAP food stamp entitlement day in Wisconsin. |
-
----
-
-### 2. `clean_sales_train_validation`
-Target Table Name: `retail_m5_dw.clean_sales_train_validation`
-
-| Column Name | Data Type | Nullable | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | `STRING` | No | Composite series key (`item_id` + `store_id` + `validation`). |
+| :--- | :--- | :---: | :--- |
+| `forecast_date` | `DATE` | No | Future forecast date (`YYYY-MM-DD`). |
 | `item_id` | `STRING` | No | Product SKU identifier. |
-| `dept_id` | `STRING` | No | Department identifier. |
-| `cat_id` | `STRING` | No | Category identifier. |
-| `store_id` | `STRING` | No | Store location identifier. |
-| `state_id` | `STRING` | No | State identifier (`CA`, `TX`, `WI`). |
-| `d_1` ... `d_N` | `INTEGER` | No | Daily sales volume on day $1 \dots N$. Non-negative numeric integer. |
+| `store_id` | `STRING` | No | Retail store location identifier. |
+| `predicted_demand` | `FLOAT` | No | Model-projected demand in units. Non-negative clipped ($\ge 0.0$). |
+| `model_name` | `STRING` | No | Name of winning model generating the forecast (e.g., `Prophet`, `LightGBM`). |
 
 ---
 
-### 3. `clean_sell_prices`
-Target Table Name: `retail_m5_dw.clean_sell_prices`
+## 📦 Inventory Replenishment Schema (`inventory_recommendations`)
 
-| Column Name | Data Type | Nullable | Description |
-| :--- | :--- | :--- | :--- |
-| `store_id` | `STRING` | No | Store location identifier. |
+- **Table Name**: `retail_m5_dw.inventory_recommendations`  
+- **Primary Key**: `(item_id, store_id)`  
+- **Description**: Contains mathematical replenishment targets and stockout risk levels per item-store series.
+
+| Column Name | Data Type | Nullable | Mathematical Formula / Business Logic |
+| :--- | :--- | :---: | :--- |
 | `item_id` | `STRING` | No | Product SKU identifier. |
-| `wm_yr_wk` | `INTEGER` | No | Walmart weekly temporal identifier. |
-| `sell_price` | `FLOAT` | No | Regular unit selling price ($). |
+| `store_id` | `STRING` | No | Store location identifier. |
+| `safety_stock` | `INTEGER` | No | $$SS = Z \times \sigma_d \times \sqrt{L}$$ ($Z=1.65$ for 95% Service Level, $L=7$ Days). |
+| `reorder_point` | `INTEGER` | No | $$ROP = (\text{Avg Daily Forecast} \times L) + SS$$ |
+| `available_inventory` | `INTEGER` | No | Current warehouse stock assumption. |
+| `recommended_order_quantity` | `INTEGER` | No | $$ROQ = \max(0, ROP - I_{\text{avail}})$$ |
+| `stockout_risk` | `STRING` | No | `HIGH` ($I_{\text{avail}} < ROP$), `MEDIUM` ($ROP \le I_{\text{avail}} < 1.25 \cdot ROP$), `LOW` otherwise. |
 
 ---
 
-## Dimension Hierarchy Mapping Rules
+## 🏆 Model Evaluation Benchmark Schema (`model_evaluation_metrics`)
 
-1. **Item Hierarchy**: Each `item_id` maps to exactly 1 `dept_id` and 1 `cat_id`.
+- **Table Name**: `retail_m5_dw.model_evaluation_metrics`  
+- **Primary Key**: `model`  
+- **Description**: Out-of-sample validation accuracy benchmark comparison across model architectures.
+
+| Column Name | Data Type | Nullable | Metric Description |
+| :--- | :--- | :---: | :--- |
+| `model` | `STRING` | No | Forecasting model architecture (`Prophet`, `LightGBM`). |
+| `MAE` | `FLOAT` | No | Mean Absolute Error: $$\frac{1}{n}\sum |y - \hat{y}|$$ |
+| `RMSE` | `FLOAT` | No | Root Mean Squared Error: $$\sqrt{\frac{1}{n}\sum (y - \hat{y})^2}$$ |
+| `sMAPE` | `FLOAT` | No | Symmetric Mean Absolute Percentage Error (%). |
+| `is_best_model` | `BOOLEAN` | No | `TRUE` for the winning model achieving the lowest RMSE. |
+
+---
+
+## 📐 Dimension Hierarchy Rules
+
+1. **Item Hierarchy**: `item_id` $\longrightarrow$ `dept_id` $\longrightarrow$ `cat_id`
    - `HOBBIES_1_001` $\rightarrow$ `HOBBIES_1` $\rightarrow$ `HOBBIES`
    - `FOODS_1_002` $\rightarrow$ `FOODS_1` $\rightarrow$ `FOODS`
-2. **Store Hierarchy**: Each `store_id` maps to exactly 1 `state_id`.
+2. **Store Hierarchy**: `store_id` $\longrightarrow$ `state_id`
    - `CA_1`, `CA_2` $\rightarrow$ `CA`
    - `TX_1` $\rightarrow$ `TX`
    - `WI_1` $\rightarrow$ `WI`
